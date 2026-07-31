@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - master
+      - overseas
 
 env:
   ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
@@ -21,9 +22,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set tag
+      - name: Set tag and build args
         id: vars
-        run: echo "tag=${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
+        run: |
+          echo "tag=${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
+          if [ "${GITHUB_REF_NAME}" = "overseas" ]; then
+            echo "channel_tag=overseas" >> $GITHUB_OUTPUT
+            echo "vite_api_url=https://canvas.viraltok.ai" >> $GITHUB_OUTPUT
+            echo "vite_web_app_url=https://www.viraltok.ai" >> $GITHUB_OUTPUT
+          else
+            echo "channel_tag=latest" >> $GITHUB_OUTPUT
+            echo "vite_api_url=https://canvas.jimmyai.cn" >> $GITHUB_OUTPUT
+            echo "vite_web_app_url=https://www.jimmyai.cn" >> $GITHUB_OUTPUT
+          fi
 
       - name: Login to Alibaba Cloud ACR
         uses: docker/login-action@v3
@@ -41,17 +52,18 @@ jobs:
           context: .
           push: true
           build-args: |
-            VITE_API_URL=https://canvas.jimmyai.cn
-            VITE_WEB_APP_URL=https://www.jimmyai.cn
+            VITE_API_URL=${{ steps.vars.outputs.vite_api_url }}
+            VITE_WEB_APP_URL=${{ steps.vars.outputs.vite_web_app_url }}
           tags: |
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.tag }}
-            ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.channel_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   deploy:
     name: Deploy to Server
     needs: build-and-push
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
       - name: Deploy via SSH
