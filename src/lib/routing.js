@@ -41,6 +41,13 @@ export function shouldShowEditor(location = window.location) {
   return false;
 }
 
+export const STRIPE_RETURN_PATH = '/recharge/stripe/return';
+
+export function isStripeReturnPath(pathname) {
+  return normalizePathname(pathname) === STRIPE_RETURN_PATH;
+}
+
 export function resolveInitialView(location = window.location) {
+  if (isStripeReturnPath(location.pathname)) return 'stripe-return';
   return shouldShowEditor(location) ? 'editor' : 'home';
 }

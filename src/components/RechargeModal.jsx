@@ -9,9 +9,11 @@ import {
 import { formatBalanceAmount } from '../lib/userApi';
 import {
   baseCoinFromPrice,
+  baseCoinFromUSD,
   computeJimicoinCreditGrant,
   formatCoinDisplay,
   isFoundingMember,
+  JIMICOIN_USD_RECHARGE_PRESETS,
 } from '../lib/vip-plan-display';
 
 const MIN_AMOUNT = 7.3;
@@ -39,16 +41,22 @@ export function RechargeModal({ isOpen, onClose, onSuccess, user }) {
   const [loading, setLoading] = useState(false);
   const [alipayEnabled, setAlipayEnabled] = useState(true);
   const [wechatEnabled, setWechatEnabled] = useState(true);
+  const [stripeEnabled, setStripeEnabled] = useState(false);
+  const [usdCnyRate, setUsdCnyRate] = useState(0);
   const [alipayAmount, setAlipayAmount] = useState(String(MIN_AMOUNT));
   const [wechatAmount, setWechatAmount] = useState(String(MIN_AMOUNT));
+  const [stripeAmount, setStripeAmount] = useState(20);
   const [redeemCodeValue, setRedeemCodeValue] = useState('');
   const [qrCode, setQrCode] = useState('');
   const [orderNo, setOrderNo] = useState('');
   const pollingRef = useRef(null);
 
   const onlineAmount = payMethod === 'alipay' ? alipayAmount : wechatAmount;
-
   const foundingMember = isFoundingMember(user);
+  const stripeBaseCoin = baseCoinFromUSD(stripeAmount, usdCnyRate);
+  const stripeGrantPreview = formatCoinDisplay(
+    computeJimicoinCreditGrant(stripeBaseCoin, { foundingDiscount: foundingMember }).grantCoin,
+  );
 
   const availableBalance = useMemo(() => {
     const totalCoin = Number(user?.payment?.jimicoin || user?.payment?.balance || 0);
@@ -72,6 +80,14 @@ export function RechargeModal({ isOpen, onClose, onSuccess, user }) {
       enabled: wechatEnabled,
       icon: QrCode,
       activeClass: 'recharge-pay-option-wechat',
+    },
+    {
+      key: 'stripe',
+      title: 'Stripe',
+      subtitle: '美金支付 · 银行卡',
+      enabled: stripeEnabled,
+      icon: CreditCard,
+      activeClass: 'recharge-pay-option-stripe',
     },
   ];
 
@@ -105,15 +121,18 @@ export function RechargeModal({ isOpen, onClose, onSuccess, user }) {
       const payments = res?.data?.payment || [];
       const alipay = payments.find((p) => p.type === 'alipay');
       const wechat = payments.find((p) => p.type === 'wechat');
-      const alipayAvailable = alipay?.enable ?? true;
-      const wechatAvailable = wechat?.enable ?? true;
+      const stripe = payments.find((p) => p.type === 'stripe');
+      const alipayAvailable = alipay?.enable ?? false;
+      const wechatAvailable = wechat?.enable ?? false;
+      const stripeAvailable = stripe?.enable ?? false;
+      const rate = Number(res?.data?.usd_cny_rate || 0);
       setAlipayEnabled(alipayAvailable);
       setWechatEnabled(wechatAvailable);
-      if (!alipayAvailable && wechatAvailable) {
-        setPayMethod('wechat');
-      } else {
-        setPayMethod('alipay');
-      }
+      setStripeEnabled(stripeAvailable);
+      if (rate > 0) setUsdCnyRate(rate);
+      if (alipayAvailable) setPayMethod('alipay');
+      else if (wechatAvailable) setPayMethod('wechat');
+      else if (stripeAvailable) setPayMethod('stripe');
     } catch (error) {
       console.error('获取支付配置失败:', error);
     }
@@ -165,6 +184,36 @@ export function RechargeModal({ isOpen, onClose, onSuccess, user }) {
   };
 
   const handleCreateCreditOrder = async () => {
+    if (payMethod === 'stripe') {
+      if (!Number.isFinite(stripeAmount) || stripeAmount < 1) {
+        window.alert('Stripe 最低充值金额为 1 美金');
+        return;
+      }
+      setLoading(true);
+      try {
+        const origin = window.location.origin;
+        const res = await createOrder({
+          pay_method: 'stripe',
+          amount: stripeAmount,
+          pay_env: 'web',
+          recharge_type: 'credit',
+          return_url: `${origin}/recharge/stripe/return`,
+          cancel_url: origin,
+        });
+        const stripeUrl = res?.data?.stripe_url;
+        if (stripeUrl) {
+          window.location.href = stripeUrl;
+          return;
+        }
+        window.alert(res?.msg || '未获取到 Stripe 支付链接');
+      } catch (error) {
+        window.alert(error?.message || '下单失败');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     const amount = Number(onlineAmount);
     if (!Number.isFinite(amount) || amount < MIN_AMOUNT) {
       window.alert(`请输入不小于 ${MIN_AMOUNT} 的金额`);
@@ -234,7 +283,7 @@ export function RechargeModal({ isOpen, onClose, onSuccess, user }) {
             </span>
             <div>
               <strong id="recharge-modal-title">充值中心</strong>
-              <span>支持支付宝、微信、兑换码充值</span>
+              <span>支持支付宝、微信、Stripe、兑换码充值</span>
             </div>
           </div>
           <button type="button" className="icon-mini" onClick={handleClose} aria-label="关闭">
@@ -294,48 +343,81 @@ export function RechargeModal({ isOpen, onClose, onSuccess, user }) {
                     })}
                   </div>
 
-                  <label className="recharge-step-label">第二步：充值金额（CNY）</label>
-                  <div className="recharge-amount-control">
-                    <button type="button" onClick={() => adjustAmount('dec')} aria-label="减少金额">
-                      -
-                    </button>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={onlineAmount}
-                      onChange={(event) => {
-                        const value = event.target.value.trim();
-                        if (payMethod === 'alipay') setAlipayAmount(value);
-                        else setWechatAmount(value);
-                      }}
-                      onBlur={() => {
-                        if (payMethod === 'alipay') {
-                          setAlipayAmount(normalizeAmount(alipayAmount));
-                          return;
-                        }
-                        setWechatAmount(normalizeAmount(wechatAmount));
-                      }}
-                    />
-                    <button type="button" onClick={() => adjustAmount('inc')} aria-label="增加金额">
-                      +
-                    </button>
-                  </div>
-                  <p className="recharge-hint">最低 7.30 CNY 起充，1 Jimicoin = 7.3 CNY</p>
+                  {payMethod === 'stripe' ? (
+                    <>
+                      <label className="recharge-step-label">第二步：充值金额（USD）</label>
+                      <div className="recharge-usd-presets">
+                        {JIMICOIN_USD_RECHARGE_PRESETS.map((preset) => (
+                          <button
+                            key={preset.usd}
+                            type="button"
+                            className={stripeAmount === preset.usd ? 'is-active' : ''}
+                            onClick={() => setStripeAmount(preset.usd)}
+                          >
+                            <strong>${preset.usd}</strong>
+                            <span>{preset.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        className="recharge-redeem-input"
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={stripeAmount}
+                        onChange={(event) => setStripeAmount(Number(event.target.value) || 0)}
+                      />
+                      <p className="recharge-hint">
+                        最低 1 美金
+                        {usdCnyRate > 0 ? `；预计到账 ${stripeGrantPreview} 吉米币` : '；正在获取汇率…'}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <label className="recharge-step-label">第二步：充值金额（CNY）</label>
+                      <div className="recharge-amount-control">
+                        <button type="button" onClick={() => adjustAmount('dec')} aria-label="减少金额">
+                          -
+                        </button>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={onlineAmount}
+                          onChange={(event) => {
+                            const value = event.target.value.trim();
+                            if (payMethod === 'alipay') setAlipayAmount(value);
+                            else setWechatAmount(value);
+                          }}
+                          onBlur={() => {
+                            if (payMethod === 'alipay') {
+                              setAlipayAmount(normalizeAmount(alipayAmount));
+                              return;
+                            }
+                            setWechatAmount(normalizeAmount(wechatAmount));
+                          }}
+                        />
+                        <button type="button" onClick={() => adjustAmount('inc')} aria-label="增加金额">
+                          +
+                        </button>
+                      </div>
+                      <p className="recharge-hint">最低 7.30 CNY 起充，1 Jimicoin = 7.3 CNY</p>
+                    </>
+                  )}
 
                   <button
                     type="button"
                     className={`recharge-submit-button ${
-                      payMethod === 'wechat' ? 'is-wechat' : 'is-alipay'
+                      payMethod === 'stripe' ? 'is-stripe' : payMethod === 'wechat' ? 'is-wechat' : 'is-alipay'
                     }`}
                     onClick={handleCreateCreditOrder}
-                    disabled={loading}
+                    disabled={loading || (payMethod === 'stripe' && usdCnyRate <= 0)}
                   >
                     {loading ? (
                       <Loader2 size={18} className="sync-chip-spin" aria-hidden="true" />
                     ) : (
                       <CreditCard size={18} aria-hidden="true" />
                     )}
-                    立即支付并充值
+                    {payMethod === 'stripe' ? 'Stripe 支付' : '立即支付并充值'}
                   </button>
                 </>
               ) : null}
@@ -372,7 +454,10 @@ export function RechargeModal({ isOpen, onClose, onSuccess, user }) {
             <aside className="recharge-modal-side">
               {mode === 'online' ? (
                 <div className="recharge-side-card is-highlight">
-                  预计兑换额度：<strong>{estimateQuota(onlineAmount, user)}</strong>
+                  预计兑换额度：
+                  <strong>
+                    {payMethod === 'stripe' ? stripeGrantPreview : estimateQuota(onlineAmount, user)}
+                  </strong>
                 </div>
               ) : null}
 

@@ -3932,6 +3932,51 @@ html[data-theme='light'] .workflow-template-icon.icon-layers {
   color: var(--recharge-wechat-active-text);
 }
 
+.recharge-pay-option.is-active.recharge-pay-option-stripe {
+  border-color: #635bff;
+  background: rgba(99, 91, 255, 0.12);
+  color: #635bff;
+}
+
+.recharge-pay-option.is-active.recharge-pay-option-stripe strong {
+  color: #635bff;
+}
+
+.recharge-usd-presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.recharge-usd-presets button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 6px;
+  border-radius: 12px;
+  border: 2px solid var(--border, rgba(255, 255, 255, 0.08));
+  background: transparent;
+  color: var(--text-strong);
+  cursor: pointer;
+}
+
+.recharge-usd-presets button strong {
+  color: #f59e0b;
+  font-size: 16px;
+}
+
+.recharge-usd-presets button span {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.recharge-usd-presets button.is-active {
+  border-color: #635bff;
+  background: rgba(99, 91, 255, 0.12);
+}
+
 .recharge-amount-control {
   display: flex;
   align-items: center;
@@ -3998,6 +4043,10 @@ html[data-theme='light'] .workflow-template-icon.icon-layers {
 
 .recharge-submit-button.is-wechat {
   background: linear-gradient(135deg, #059669, #047857);
+}
+
+.recharge-submit-button.is-stripe {
+  background: linear-gradient(135deg, #635bff, #4f46e5);
 }
 
 .recharge-submit-button.is-redeem {

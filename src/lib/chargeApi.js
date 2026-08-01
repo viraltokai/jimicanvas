@@ -34,3 +34,11 @@ export function checkOrderStatus(orderNo) {
     query: { order_no: orderNo },
   });
 }
+
+/** Stripe Checkout 回跳后主动确认入账 */
+export function confirmStripeOrder(data) {
+  return chargeRequest('/api/charge/stripe/confirm', {
+    method: 'POST',
+    body: data,
+  });
+}

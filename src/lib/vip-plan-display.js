@@ -20,6 +20,26 @@ export function baseCoinFromPrice(price) {
   return roundCoin(price / VIP_COIN_EXCHANGE_RATE);
 }
 
+/** 美金 → 基础吉米币：usd × USD/CNY ÷ 7.3 */
+export function baseCoinFromUSD(usd, usdCnyRate) {
+  if (usd <= 0 || usdCnyRate <= 0) return 0;
+  return baseCoinFromPrice(usd * usdCnyRate);
+}
+
+/** Stripe 美金整数档位 */
+export const JIMICOIN_USD_RECHARGE_PRESETS = [
+  { usd: 10, label: '超值套餐' },
+  { usd: 20, label: '热门套餐' },
+  { usd: 50, label: '尊享套餐' },
+  { usd: 100, label: '旗舰套餐' },
+  { usd: 200, label: '至尊套餐' },
+  { usd: 500, label: '企业套餐' },
+  { usd: 1000, label: '豪华套餐' },
+  { usd: 1500, label: '进阶套餐' },
+  { usd: 2000, label: '大宗套餐' },
+  { usd: 5000, label: '旗舰大宗' },
+];
+
 export function grantBonusPayRateForBaseCoin(baseCoin) {
   for (const tier of GRANT_BONUS_TIERS) {
     if (baseCoin >= tier.min) return tier.rate;
