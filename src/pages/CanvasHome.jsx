@@ -914,7 +914,7 @@ export function CanvasHome() {
       {showRechargeModal ? (
         <RechargeModal
           isOpen={showRechargeModal}
-          user={user}
+          user={user?.profile || user}
           onClose={() => setShowRechargeModal(false)}
           onSuccess={handleRechargeSuccess}
         />

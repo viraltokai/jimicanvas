@@ -62,8 +62,17 @@ export function applyFoundingRechargeDiscount(grantCoin) {
 }
 
 export function isFoundingMember(user) {
-  const vipInfo = user?.vip_info || user?.vipInfo;
-  return !!(vipInfo?.is_founding_member || vipInfo?.vip_type === 'founding');
+  if (!user) return false;
+  // fetchUserInfo 会把字段拍平；编辑器侧可能直接传 profile（含 vip_info）
+  const vipInfo = user.vip_info || user.vipInfo || user.profile?.vip_info || user.profile?.vipInfo;
+  return !!(
+    user.is_founding_member ||
+    user.isFoundingMember ||
+    vipInfo?.is_founding_member ||
+    vipInfo?.isFoundingMember ||
+    user.vip_type === 'founding' ||
+    vipInfo?.vip_type === 'founding'
+  );
 }
 
 export function computeJimicoinCreditGrant(baseCoin, options = {}) {

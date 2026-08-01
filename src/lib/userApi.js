@@ -111,9 +111,17 @@ export function getUserDisplayInitial(nickname) {
 
 export function parseVipInfo(vipInfo) {
   const isVip = Boolean(vipInfo?.is_vip);
+  const vipType = String(vipInfo?.vip_type || '');
+  const isFoundingMember = Boolean(
+    vipInfo?.is_founding_member || vipInfo?.isFoundingMember || vipType === 'founding',
+  );
   return {
     isVip,
     vipLevel: Number(vipInfo?.vip_level) || 0,
+    vip_type: vipType,
+    is_founding_member: isFoundingMember,
+    isFoundingMember,
+    vip_info: vipInfo || null,
   };
 }
 
