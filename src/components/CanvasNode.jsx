@@ -2297,6 +2297,7 @@ export function ImageToolbar({
   const summaryParts = [
     modelLabel,
     normalizedSettings.resolution,
+    qualityOptions.length > 0 ? (normalizedSettings.quality || 'auto') : '',
     normalizedSettings.ratio,
     normalizedSettings.count ? `${normalizedSettings.count}张` : ''
   ].filter(Boolean);
@@ -2330,12 +2331,14 @@ export function ImageToolbar({
             });
           }}
         />
-        <OptionSegment
-          title="分辨率"
-          value={normalizedSettings.resolution}
-          options={resolutionOptions}
-          onChange={(value) => onUpdateNode(node.id, { imageResolution: value })}
-        />
+        {resolutionOptions.length > 0 ? (
+          <OptionSegment
+            title="分辨率"
+            value={normalizedSettings.resolution}
+            options={resolutionOptions}
+            onChange={(value) => onUpdateNode(node.id, { imageResolution: value })}
+          />
+        ) : null}
         {qualityOptions.length > 0 ? (
           <OptionSegment
             title="画质"

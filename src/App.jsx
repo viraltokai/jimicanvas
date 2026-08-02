@@ -3722,11 +3722,13 @@ function App() {
       modelName = node.imageModel || 'gpt-image-2';
       params = [
         `比例: ${node.imageRatio || '1:1'}`,
-        `分辨率: ${node.imageResolution || '1k'}`,
         `数量: ${node.imageCount || 1}张`,
       ];
-      if (node.imageQuality) {
-        params.push(`画质: ${node.imageQuality}`);
+      if (modelName !== 'gpt-image-1.5') {
+        params.splice(1, 0, `分辨率: ${node.imageResolution || '1k'}`);
+      }
+      if (node.imageQuality || modelName === 'gpt-image-1.5' || modelName === 'gpt-image-2') {
+        params.push(`画质: ${node.imageQuality || 'auto'}`);
       }
       promptText = resolveImagePrompt(node, nodes, connections);
       promptLabel = '生成提示词';

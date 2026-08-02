@@ -70,6 +70,7 @@ export const IMAGE_REFERENCE_LIMITS = {
   nanobanana2: 5,
   nanobananapro: 5,
   'gpt-image-2': 16,
+  'gpt-image-1.5': 15,
 };
 
 export function getImageReferenceMax(model) {
@@ -481,6 +482,7 @@ export function normalizeVideoModelSettings({
 
 export const IMAGE_MODEL_OPTIONS = [
   { value: 'gpt-image-2', label: 'gpt image2' },
+  { value: 'gpt-image-1.5', label: 'gpt image 1.5' },
   { value: 'nanobanana2', label: 'nano banana2' },
   { value: 'nanobananapro', label: 'nano banana pro' },
 ];
@@ -515,6 +517,13 @@ export const GPT_IMAGE_RATIO_OPTIONS = [
   { value: '9:21', label: '9:21' },
 ];
 
+/** GPT Image 1.5 官方线路仅支持 1:1 / 2:3 / 3:2（对齐 jimiaiopengo） */
+export const GPT_IMAGE15_RATIO_OPTIONS = [
+  { value: '1:1', label: '1:1' },
+  { value: '2:3', label: '2:3' },
+  { value: '3:2', label: '3:2' },
+];
+
 export const IMAGE_COUNT_OPTIONS = [
   { value: 1, label: '1 次' },
   { value: 2, label: '2 次' },
@@ -547,6 +556,12 @@ export const IMAGE_MODEL_LIMITS = {
     qualities: IMAGE_QUALITY_OPTIONS.map((option) => option.value),
     maxCount: 5,
   },
+  'gpt-image-1.5': {
+    resolutions: [],
+    ratios: GPT_IMAGE15_RATIO_OPTIONS.map((option) => option.value),
+    qualities: IMAGE_QUALITY_OPTIONS.map((option) => option.value),
+    maxCount: 5,
+  },
 };
 
 export function getImageModelLimits(model) {
@@ -554,15 +569,19 @@ export function getImageModelLimits(model) {
 }
 
 export function getImageResolutionOptions(model) {
-  const allowed = new Set(getImageModelLimits(model).resolutions);
+  const allowed = new Set(getImageModelLimits(model).resolutions || []);
   return IMAGE_RESOLUTION_OPTIONS.filter((option) => allowed.has(option.value));
 }
 
 export function getImageRatioOptions(model) {
   const allowed = new Set(getImageModelLimits(model).ratios);
-  return (model === 'gpt-image-2' ? GPT_IMAGE_RATIO_OPTIONS : IMAGE_RATIO_OPTIONS).filter((option) =>
-    allowed.has(option.value)
-  );
+  const source =
+    model === 'gpt-image-2'
+      ? GPT_IMAGE_RATIO_OPTIONS
+      : model === 'gpt-image-1.5'
+        ? GPT_IMAGE15_RATIO_OPTIONS
+        : IMAGE_RATIO_OPTIONS;
+  return source.filter((option) => allowed.has(option.value));
 }
 
 export function getImageCountOptions(model) {
@@ -591,9 +610,12 @@ export function normalizeImageModelSettings({
 
   return {
     model,
-    resolution: resolutionOptions.some((option) => option.value === resolution)
-      ? resolution
-      : resolutionOptions[0]?.value || DEFAULT_IMAGE_RESOLUTION,
+    resolution:
+      resolutionOptions.length === 0
+        ? ''
+        : resolutionOptions.some((option) => option.value === resolution)
+          ? resolution
+          : resolutionOptions[0]?.value || DEFAULT_IMAGE_RESOLUTION,
     ratio: ratioOptions.some((option) => option.value === ratio)
       ? ratio
       : ratioOptions[0]?.value || DEFAULT_IMAGE_RATIO,

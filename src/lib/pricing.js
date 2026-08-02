@@ -31,6 +31,14 @@ export function resolveBillingModelName(node, options = {}) {
 
   if (node.type === 'image') {
     const model = node.imageModel || 'gpt-image-2';
+    if (model === 'gpt-image-1.5') {
+      const quality = String(node.imageQuality || 'auto').toLowerCase();
+      if (!quality || quality === 'auto') return 'gpt-image-1.5';
+      if (quality === 'low' || quality === 'medium' || quality === 'high') {
+        return `gpt-image-1.5-${quality}`;
+      }
+      return 'gpt-image-1.5';
+    }
     const resolution = String(node.imageResolution || '1k').toLowerCase();
     return `${model}-${resolution}`;
   }

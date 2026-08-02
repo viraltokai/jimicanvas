@@ -54,6 +54,7 @@ function requestForm(path, { token, formData }) {
 
 function imagePathForModel(model) {
   if (model === 'gpt-image-2') return '/api/image/gpt-image-2';
+  if (model === 'gpt-image-1.5') return '/api/image/gpt-image-1.5';
   if (model === 'nanobananapro') return '/api/image/nanobananapro';
   return '/api/image/nanobanana2';
 }
@@ -142,17 +143,21 @@ async function buildReferenceParts(referenceImages = []) {
 }
 
 async function buildImageRequest({ prompt, model, ratio, resolution, quality, referenceImages = [] }) {
-  if (model === 'gpt-image-2') {
-    return {
+  if (model === 'gpt-image-2' || model === 'gpt-image-1.5') {
+    const body = {
       model,
       prompt,
       ratio: ratio || DEFAULT_IMAGE_RATIO,
-      resolution: resolution || DEFAULT_IMAGE_RESOLUTION,
       quality: quality || 'auto',
       n: 1,
       generation_mode: 'queue',
       images: referenceImages.map((image) => normalizeImageUrl(image.url || image.data)).filter(Boolean),
     };
+    // 1.5 按 quality 计费，无 resolution；2 仍传 1k/2k/4k
+    if (model === 'gpt-image-2') {
+      body.resolution = resolution || DEFAULT_IMAGE_RESOLUTION;
+    }
+    return body;
   }
 
   const referenceParts = await buildReferenceParts(referenceImages);
