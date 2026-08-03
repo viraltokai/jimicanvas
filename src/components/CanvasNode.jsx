@@ -18,6 +18,7 @@ import {
   Scissors,
   Check,
   Sparkles,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { getNoteContentStyleCss } from '../lib/noteContentStyle';
 import {
@@ -33,12 +34,14 @@ import {
   defaultSoraSize,
   inferVideoFamily,
   getVideoReferenceImageMax,
+  grokRequiresReferenceImage,
   IMAGE_MODEL_OPTIONS,
   getImageRatioOptions,
   getImageResolutionOptions,
   getImageQualityOptions,
   normalizeImageModelSettings,
   normalizeVideoModelSettings,
+  VIDEO_FAMILY_OPTIONS,
   VEO_GENERATION_TYPE_OPTIONS,
   DEFAULT_IMAGE_URL,
   DEFAULT_VIDEO_URL,
@@ -48,7 +51,6 @@ import {
   SEEDANCE_REF_VIDEO_MAX,
   SEEDANCE_REF_AUDIO_MAX,
   getImageReferenceMax,
-  VIDEO_FAMILY_OPTIONS,
   AUDIO_VOICE_OPTIONS,
   AUDIO_SPEED_OPTIONS,
   MIN_AUDIO_NODE_HEIGHT,
@@ -1279,14 +1281,16 @@ export function VideoToolbar({
   userProfile,
 }) {
   const toolbarRef = useRef(null);
-  const [showSettingsPopover, setShowSettingsPopover] = useState(false);
+  const [activePopover, setActivePopover] = useState(null); // 'model' | 'params' | null
   const popoverRef = useRef(null);
 
   useEffect(() => {
-    if (!showSettingsPopover) return;
+    if (!activePopover) return;
     const handleOutsideClick = (event) => {
       if (popoverRef.current && !popoverRef.current.contains(event.target)) {
-        setShowSettingsPopover(false);
+        // Keep open when clicking either trigger button
+        if (event.target.closest?.('.settings-trigger-btn')) return;
+        setActivePopover(null);
       }
     };
     const timer = setTimeout(() => {
@@ -1296,7 +1300,8 @@ export function VideoToolbar({
       clearTimeout(timer);
       document.removeEventListener('click', handleOutsideClick);
     };
-  }, [showSettingsPopover]);
+  }, [activePopover]);
+  const showSettingsPopover = Boolean(activePopover);
   const hasTextInput = textInputLinks.length > 0;
   const isPromptEmpty = !String(node.prompt || '').trim() && !hasTextInput;
   const resolvedReferences = resolveVideoToolbarReferences(node, imageInputLinks);
@@ -1321,10 +1326,12 @@ export function VideoToolbar({
   const hasSeedanceReferenceImages = seedanceReferenceMode && resolvedReferences.length > 0;
   const showSeedanceReferenceMedia = isSeedance && !hasSeedanceFrames;
   const showGenericReferenceImages = !isVeo && !isSeedance;
-  const model = node.videoModel || getVideoModelOptions(family)[0]?.value;
   const modelOptions = getVideoModelOptions(family);
+  const model = modelOptions.some((option) => option.value === node.videoModel)
+    ? node.videoModel
+    : modelOptions[0]?.value || node.videoModel;
   const resolutionOptions = getVideoResolutionOptions(family, model);
-  const ratioOptions = getVideoRatioOptions(family);
+  const ratioOptions = getVideoRatioOptions(family, model);
   const durationOptions = getVideoDurationOptions(family, model);
   const countOptions = getVideoCountOptions(family);
   const normalizedSettings = normalizeVideoModelSettings({
@@ -1350,6 +1357,7 @@ export function VideoToolbar({
   const ratioValue = family === 'sora' ? normalizedSettings.orientation : normalizedSettings.ratio;
   const resolutionTitle = family === 'grok' ? '画质' : '分辨率';
   const genericReferenceMax = getVideoReferenceImageMax(node);
+  const requiresGrokReference = family === 'grok' && grokRequiresReferenceImage(model);
   const referencePreviewUrls = getReferencePreviewUrls(resolvedReferences);
   const hasVideoRefs = videoInputLinks.length > 0;
   const videoCost = pricingList ? calculateEstimatedCost(pricingList, node, userProfile, { hasVideoRefs }) : 0;
@@ -1532,12 +1540,16 @@ export function VideoToolbar({
       size: node.videoSize,
       resolution: defaultResolution,
       orientation: node.videoOrientation,
-      ratio: node.videoRatio,
-      quality: node.videoQuality,
-      duration: node.videoDuration,
+      ratio: family === 'grok' ? undefined : node.videoRatio,
+      quality: family === 'grok' ? (node.videoQuality || '720p') : node.videoQuality,
+      duration: family === 'grok' ? undefined : node.videoDuration,
       count: node.videoCount,
       route: node.videoRoute,
     });
+    const maxRefs = getVideoReferenceImageMax({ ...node, videoModel: nextSettings.model, videoFamily: family });
+    const nextRefs = Array.isArray(node.referenceImages)
+      ? node.referenceImages.slice(0, maxRefs)
+      : node.referenceImages;
     onUpdateNode(node.id, {
       videoModel: nextSettings.model,
       videoSize: nextSettings.size,
@@ -1547,6 +1559,7 @@ export function VideoToolbar({
       videoRatio: nextSettings.ratio,
       videoDuration: nextSettings.duration,
       videoCount: nextSettings.count,
+      referenceImages: nextRefs,
       ...patchVideoLayout({
         videoOrientation: nextSettings.orientation,
         videoRatio: nextSettings.ratio,
@@ -1591,31 +1604,42 @@ export function VideoToolbar({
     />
   );
 
-  const videoSettingsPanels = (
+  const videoModelPanels = (
     <div className="settings-options-stack">
       <OptionSegment
         title="系列"
         value={family}
         options={VIDEO_FAMILY_OPTIONS}
-        onChange={applyFamilyChange}
+        onChange={(nextFamily) => {
+          applyFamilyChange(nextFamily);
+          setActivePopover(null);
+        }}
       />
-      <div className="settings-options-row">
-        {modelOptions.length > 1 ? (
-          <OptionSegment
-            title="模型"
-            value={normalizedSettings.model}
-            options={modelOptions}
-            onChange={applyModelChange}
-          />
-        ) : isSeedance ? (
-          <div className="option-segment video-model-fixed" title="Seedance 2.0 满血版">
-            <span className="option-segment-title">模型</span>
-            <div className="video-model-fixed-panel">
-              <span className="video-model-fixed-badge">满血版</span>
-              <span className="video-model-fixed-value">Seedance 2.0</span>
-            </div>
+      {modelOptions.length > 1 ? (
+        <OptionSegment
+          title="模型"
+          value={normalizedSettings.model}
+          options={modelOptions}
+          onChange={(value) => {
+            applyModelChange(value);
+            setActivePopover(null);
+          }}
+        />
+      ) : isSeedance ? (
+        <div className="option-segment video-model-fixed" title="Seedance 2.0 满血版">
+          <span className="option-segment-title">模型</span>
+          <div className="video-model-fixed-panel">
+            <span className="video-model-fixed-badge">满血版</span>
+            <span className="video-model-fixed-value">Seedance 2.0</span>
           </div>
-        ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const videoParamPanels = (
+    <div className="settings-options-stack">
+      <div className="settings-options-row">
         {showResolutionControl ? (
           <OptionSegment
             title={resolutionTitle}
@@ -1656,6 +1680,13 @@ export function VideoToolbar({
           {durationSegment}
         </>
       )}
+    </div>
+  );
+
+  const videoSettingsPanels = (
+    <div className="settings-options-stack">
+      {videoModelPanels}
+      {videoParamPanels}
     </div>
   );
 
@@ -1859,9 +1890,16 @@ export function VideoToolbar({
     ratioValue,
     resolutionValue
   ].filter(Boolean);
-  const summaryText = summaryParts.join(' | ') || '设置';
+  const summaryText = summaryParts.join(' | ') || '参数';
+  const familyLabel =
+    VIDEO_FAMILY_OPTIONS.find((option) => option.value === family)?.label || family;
+  const modelOptionLabel = modelOptions.find((option) => option.value === normalizedSettings.model)?.label;
+  const modelTriggerText =
+    modelOptions.length > 1 && modelOptionLabel && modelOptionLabel !== familyLabel
+      ? `${familyLabel} · ${modelOptionLabel}`
+      : familyLabel;
 
-  const settingsContent = videoSettingsPanels;
+  const settingsContent = activePopover === 'model' ? videoModelPanels : videoParamPanels;
 
 
   const showRefImageBtn = showVeoReferenceImages || showGenericReferenceImages;
@@ -2006,7 +2044,9 @@ export function VideoToolbar({
           </div>
         ) : showGenericReferenceImages ? (
           <div className="image-reference-row image-reference-row-top">
-            <span className="image-reference-label">参考图</span>
+            <span className="image-reference-label">
+              {requiresGrokReference ? '参考图（必填 1 张）' : '参考图'}
+            </span>
             <div className="image-reference-list">
               {resolvedReferences.map((image, index) => {
                 const isConnection = image.source === 'connection';
@@ -2135,16 +2175,20 @@ export function VideoToolbar({
       )}
 
       {variant === 'modal' ? (
-        settingsContent
+        videoSettingsPanels
       ) : isSeedance ? (
         showSettingsPopover && (
-          <div className="toolbar-settings-inline" ref={popoverRef}>
+          <div className="toolbar-settings-inline" ref={popoverRef} data-popover={activePopover}>
             {settingsContent}
           </div>
         )
       ) : (
         showSettingsPopover && (
-          <div className="toolbar-settings-popover" ref={popoverRef}>
+          <div
+            className={`toolbar-settings-popover toolbar-settings-popover--${activePopover}`}
+            ref={popoverRef}
+            data-popover={activePopover}
+          >
             {settingsContent}
           </div>
         )
@@ -2178,18 +2222,32 @@ export function VideoToolbar({
 
       <div className="node-bottom-actions image-bottom-actions">
         {variant !== 'modal' && (
-          <button
-            type="button"
-            className={`icon-button settings-trigger-btn ${showSettingsPopover ? 'active' : ''}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowSettingsPopover(!showSettingsPopover);
-            }}
-            title="参数设置"
-          >
-            <Film size={14} />
-            <span>{summaryText}</span>
-          </button>
+          <>
+            <button
+              type="button"
+              className={`icon-button settings-trigger-btn ${activePopover === 'model' ? 'active' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setActivePopover((prev) => (prev === 'model' ? null : 'model'));
+              }}
+              title="选择模型"
+            >
+              <Film size={14} />
+              <span>{modelTriggerText}</span>
+            </button>
+            <button
+              type="button"
+              className={`icon-button settings-trigger-btn ${activePopover === 'params' ? 'active' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setActivePopover((prev) => (prev === 'params' ? null : 'params'));
+              }}
+              title="参数设置"
+            >
+              <SlidersHorizontal size={14} />
+              <span>{summaryText}</span>
+            </button>
+          </>
         )}
 
         {pricingList && (
@@ -2237,14 +2295,15 @@ export function ImageToolbar({
   pricingList,
   userProfile,
 }) {
-  const [showSettingsPopover, setShowSettingsPopover] = useState(false);
+  const [activePopover, setActivePopover] = useState(null); // 'model' | 'params' | null
   const popoverRef = useRef(null);
 
   useEffect(() => {
-    if (!showSettingsPopover) return;
+    if (!activePopover) return;
     const handleOutsideClick = (event) => {
       if (popoverRef.current && !popoverRef.current.contains(event.target)) {
-        setShowSettingsPopover(false);
+        if (event.target.closest?.('.settings-trigger-btn')) return;
+        setActivePopover(null);
       }
     };
     const timer = setTimeout(() => {
@@ -2254,7 +2313,8 @@ export function ImageToolbar({
       clearTimeout(timer);
       document.removeEventListener('click', handleOutsideClick);
     };
-  }, [showSettingsPopover]);
+  }, [activePopover]);
+  const showSettingsPopover = Boolean(activePopover);
 
   const hasTextInput = textInputLinks.length > 0;
   const isPromptEmpty = !String(node.prompt || '').trim() && !hasTextInput;
@@ -2293,44 +2353,51 @@ export function ImageToolbar({
     });
   }
 
-  const modelLabel = model.replace(/^gpt-image-/, 'GPT-').toUpperCase();
+  const modelLabel =
+    IMAGE_MODEL_OPTIONS.find((option) => option.value === model)?.label ||
+    model.replace(/^gpt-image-/, 'GPT-').toUpperCase();
   const summaryParts = [
-    modelLabel,
     normalizedSettings.resolution,
     qualityOptions.length > 0 ? (normalizedSettings.quality || 'auto') : '',
     normalizedSettings.ratio,
-    normalizedSettings.count ? `${normalizedSettings.count}张` : ''
+    normalizedSettings.count ? `${normalizedSettings.count}张` : '',
   ].filter(Boolean);
-  const summaryText = summaryParts.join(' | ') || '设置';
+  const summaryText = summaryParts.join(' | ') || '参数';
 
-  const settingsContent = (
+  const imageModelPanels = (
     <div className="settings-options-stack">
-      <div className="settings-options-row">
-        <OptionSegment
-          title="模型"
-          value={model}
-          options={IMAGE_MODEL_OPTIONS}
-          onChange={(value) => {
-            const nextSettings = normalizeImageModelSettings({
-              model: value,
-              resolution: node.imageResolution,
-              ratio: node.imageRatio,
-              count: node.imageCount,
-              quality: node.imageQuality,
-            });
-            onUpdateNode(node.id, {
-              imageModel: value,
-              imageResolution: nextSettings.resolution,
+      <OptionSegment
+        title="模型"
+        value={model}
+        options={IMAGE_MODEL_OPTIONS}
+        onChange={(value) => {
+          const nextSettings = normalizeImageModelSettings({
+            model: value,
+            resolution: node.imageResolution,
+            ratio: node.imageRatio,
+            count: node.imageCount,
+            quality: node.imageQuality,
+          });
+          onUpdateNode(node.id, {
+            imageModel: value,
+            imageResolution: nextSettings.resolution,
+            imageRatio: nextSettings.ratio,
+            imageCount: nextSettings.count,
+            imageQuality: nextSettings.quality,
+            ...patchLayoutForEmptyNode({
               imageRatio: nextSettings.ratio,
               imageCount: nextSettings.count,
-              imageQuality: nextSettings.quality,
-              ...patchLayoutForEmptyNode({
-                imageRatio: nextSettings.ratio,
-                imageCount: nextSettings.count,
-              }),
-            });
-          }}
-        />
+            }),
+          });
+          setActivePopover(null);
+        }}
+      />
+    </div>
+  );
+
+  const imageParamPanels = (
+    <div className="settings-options-stack">
+      <div className="settings-options-row">
         {resolutionOptions.length > 0 ? (
           <OptionSegment
             title="分辨率"
@@ -2372,6 +2439,18 @@ export function ImageToolbar({
       />
     </div>
   );
+
+  const settingsContent =
+    variant === 'modal' ? (
+      <div className="settings-options-stack">
+        {imageModelPanels}
+        {imageParamPanels}
+      </div>
+    ) : activePopover === 'model' ? (
+      imageModelPanels
+    ) : (
+      imageParamPanels
+    );
 
   const extraActions = (
     <>
@@ -2441,7 +2520,11 @@ export function ImageToolbar({
         settingsContent
       ) : (
         showSettingsPopover && (
-          <div className="toolbar-settings-popover" ref={popoverRef}>
+          <div
+            className={`toolbar-settings-popover toolbar-settings-popover--${activePopover}`}
+            ref={popoverRef}
+            data-popover={activePopover}
+          >
             {settingsContent}
           </div>
         )
@@ -2471,18 +2554,32 @@ export function ImageToolbar({
       ) : null}
       <div className="node-bottom-actions image-bottom-actions">
         {variant !== 'modal' && (
-          <button
-            type="button"
-            className={`icon-button settings-trigger-btn ${showSettingsPopover ? 'active' : ''}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowSettingsPopover(!showSettingsPopover);
-            }}
-            title="参数设置"
-          >
-            <Sparkles size={14} />
-            <span>{summaryText}</span>
-          </button>
+          <>
+            <button
+              type="button"
+              className={`icon-button settings-trigger-btn ${activePopover === 'model' ? 'active' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setActivePopover((prev) => (prev === 'model' ? null : 'model'));
+              }}
+              title="选择模型"
+            >
+              <Sparkles size={14} />
+              <span>{modelLabel}</span>
+            </button>
+            <button
+              type="button"
+              className={`icon-button settings-trigger-btn ${activePopover === 'params' ? 'active' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setActivePopover((prev) => (prev === 'params' ? null : 'params'));
+              }}
+              title="参数设置"
+            >
+              <SlidersHorizontal size={14} />
+              <span>{summaryText}</span>
+            </button>
+          </>
         )}
 
         {pricingList && (

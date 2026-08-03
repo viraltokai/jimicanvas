@@ -8381,6 +8381,10 @@ textarea,
   pointer-events: none;
 }
 
+.toolbar-settings-popover--params::after {
+  left: 148px;
+}
+
 @keyframes toolbar-popover-fade-in {
   from {
     opacity: 0;

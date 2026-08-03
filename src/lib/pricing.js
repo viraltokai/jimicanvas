@@ -1,3 +1,13 @@
+import {
+  GROK_10S_MODEL,
+  GROK_15_MODEL,
+  GROK_MAX_MODEL,
+  GROK_VIDEO3_MODEL,
+  isGrok10sModel,
+  isGrok15Model,
+  isGrokMaxModel,
+} from './constants';
+
 export function getUserPriceType(profile) {
   if (!profile) return 'standard';
   const roles = profile.roles || [];
@@ -88,7 +98,11 @@ export function resolveBillingModelName(node, options = {}) {
       return map[resolution] || 'sd2_mx_720p';
     }
     if (family === 'grok') {
-      return 'grok_video3';
+      const modelName = String(node.videoModel || options.model || '').trim();
+      if (isGrok15Model(modelName)) return GROK_15_MODEL;
+      if (isGrok10sModel(modelName)) return GROK_10S_MODEL;
+      if (isGrokMaxModel(modelName)) return GROK_MAX_MODEL;
+      return GROK_VIDEO3_MODEL;
     }
   }
 

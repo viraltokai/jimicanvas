@@ -231,14 +231,16 @@ export const VIDEO_FAMILY_CONFIG = {
   },
   grok: {
     provider: 'grok',
-    models: [{ value: 'grok_video3', label: 'Grok Video 3' }],
+    models: [
+      { value: 'grok-imagine-video-1.5', label: 'Grok 1.5' },
+    ],
     resolutions: [
-      { value: '480p', label: '480p' },
       { value: '720p', label: '720p' },
+      { value: '480p', label: '480p' },
     ],
     ratios: [
-      { value: '16:9', label: '16:9' },
       { value: '9:16', label: '9:16' },
+      { value: '16:9', label: '16:9' },
       { value: '1:1', label: '1:1' },
       { value: '3:2', label: '3:2' },
       { value: '2:3', label: '2:3' },
@@ -250,11 +252,63 @@ export const VIDEO_FAMILY_CONFIG = {
       { value: '20', label: '20 秒' },
       { value: '30', label: '30 秒' },
     ],
+    grok15Durations: [
+      { value: '10', label: '10 秒' },
+      { value: '15', label: '15 秒' },
+    ],
+    grok10sDurations: [{ value: '10', label: '10 秒' }],
+    grokMaxDurations: [
+      { value: '6', label: '6 秒' },
+      { value: '10', label: '10 秒' },
+      { value: '12', label: '12 秒' },
+      { value: '16', label: '16 秒' },
+      { value: '20', label: '20 秒' },
+      { value: '30', label: '30 秒' },
+    ],
+    grokMaxRatios: [
+      { value: '9:16', label: '9:16' },
+      { value: '16:9', label: '16:9' },
+      { value: '1:1', label: '1:1' },
+    ],
+    defaultDuration: '10',
     maxCount: 3,
     resolutionKey: 'quality',
     ratioKey: 'ratio',
   },
 };
+
+export const GROK_15_MODEL = 'grok-imagine-video-1.5';
+export const GROK_VIDEO3_MODEL = 'grok_video3';
+export const GROK_10S_MODEL = 'grok-10s';
+export const GROK_MAX_MODEL = 'grok-max';
+
+export function isGrok15Model(model = '') {
+  const value = String(model).toLowerCase();
+  return (
+    value === GROK_15_MODEL ||
+    value === 'grok_video1.5_pro' ||
+    value.includes('grok-imagine-video-1.5') ||
+    value.includes('1.5_pro')
+  );
+}
+
+export function isGrok10sModel(model = '') {
+  return String(model).toLowerCase() === GROK_10S_MODEL;
+}
+
+export function isGrokMaxModel(model = '') {
+  return String(model).toLowerCase() === GROK_MAX_MODEL;
+}
+
+export function getGrokReferenceImageMax(model = '') {
+  if (isGrok15Model(model)) return 1;
+  if (isGrokMaxModel(model)) return 5;
+  return 7;
+}
+
+export function grokRequiresReferenceImage(model = '') {
+  return isGrok15Model(model);
+}
 
 export const SEEDANCE_MANXUE_MODEL = 'seedance-2.0-manxue';
 
@@ -328,6 +382,7 @@ export function getVideoReferenceImageMax(node = {}) {
   if (family === 'veo') return VEO_REFERENCE_IMAGE_MAX;
   if (family === 'seedance') return SEEDANCE_REF_IMAGE_MAX;
   if (family === 'omni') return OMNI_REFERENCE_IMAGE_MAX;
+  if (family === 'grok') return getGrokReferenceImageMax(node.videoModel);
   return VIDEO_GENERIC_REFERENCE_MAX;
 }
 
@@ -353,8 +408,12 @@ export function getVideoResolutionOptions(family, model = '') {
   return config.resolutions;
 }
 
-export function getVideoRatioOptions(family) {
-  return getVideoFamilyConfig(family).ratios;
+export function getVideoRatioOptions(family, model = '') {
+  const config = getVideoFamilyConfig(family);
+  if (family === 'grok' && isGrokMaxModel(model) && config.grokMaxRatios) {
+    return config.grokMaxRatios;
+  }
+  return config.ratios;
 }
 
 export function getVideoDurationOptions(family, model = '') {
@@ -364,6 +423,11 @@ export function getVideoDurationOptions(family, model = '') {
   }
   if (family === 'seedance' && isSeedanceStandardModel(model)) {
     return config.standardDurations || config.durations;
+  }
+  if (family === 'grok') {
+    if (isGrok15Model(model)) return config.grok15Durations || config.durations;
+    if (isGrok10sModel(model)) return config.grok10sDurations || config.durations;
+    if (isGrokMaxModel(model)) return config.grokMaxDurations || config.durations;
   }
   return config.durations;
 }
@@ -401,7 +465,8 @@ export function normalizeVideoModelSettings({
   const normalizedGenerationType = family === 'veo' ? normalizeVeoGenerationType(generationType) : undefined;
   const effectiveOrientation = orientation ?? getDefaultVideoOrientation(family);
   const modelOptions = config.models || [];
-  const ratioOptions = config.ratios || [];
+  const ratioOptions =
+    family === 'grok' ? getVideoRatioOptions(family, model) : config.ratios || [];
 
   const isManxueSeedance = family === 'seedance' && isSeedanceManxueModel(model);
   const manxueResolutionOptions = config.manxueResolutions || [];
@@ -416,20 +481,17 @@ export function normalizeVideoModelSettings({
     normalizedModel = SEEDANCE_MANXUE_MODEL;
   }
 
-  const durationOptions =
-    family === 'seedance' && isSeedanceManxueModel(normalizedModel)
-      ? config.manxueDurations || config.durations
-      : family === 'seedance' && isSeedanceStandardModel(normalizedModel)
-        ? config.standardDurations || config.durations
-        : config.durations;
+  const durationOptions = getVideoDurationOptions(family, normalizedModel);
+  const effectiveRatioOptions =
+    family === 'grok' ? getVideoRatioOptions(family, normalizedModel) : ratioOptions;
 
-  const normalizedRatio = ratioOptions.some((option) => option.value === (family === 'sora' ? effectiveOrientation : ratio))
+  const normalizedRatio = effectiveRatioOptions.some((option) => option.value === (family === 'sora' ? effectiveOrientation : ratio))
     ? family === 'sora'
       ? effectiveOrientation
       : ratio
     : family === 'sora'
       ? getDefaultVideoOrientation(family)
-      : ratioOptions[0]?.value;
+      : effectiveRatioOptions[0]?.value;
 
   let normalizedResolution = resolution;
   if (family === 'sora') {
@@ -445,9 +507,10 @@ export function normalizeVideoModelSettings({
       : manxueResolutionOptions[0]?.value || '720p';
   } else if (family === 'grok') {
     const resolutionOptions = config.resolutions || [];
-    normalizedResolution = resolutionOptions.some((option) => option.value === quality)
-      ? quality
-      : resolutionOptions[0]?.value;
+    const preferredQuality = quality || DEFAULT_VIDEO_QUALITY;
+    normalizedResolution = resolutionOptions.some((option) => option.value === preferredQuality)
+      ? preferredQuality
+      : resolutionOptions[0]?.value || '720p';
   } else {
     const resolutionOptions = getVideoResolutionOptions(family, normalizedModel);
     normalizedResolution = resolutionOptions.some((option) => option.value === resolution)
@@ -455,9 +518,23 @@ export function normalizeVideoModelSettings({
       : resolutionOptions[0]?.value;
   }
 
+  const familyDefaultDuration = getDefaultVideoDuration(family);
+  const modelDefaultDuration =
+    family === 'grok' && isGrok15Model(normalizedModel)
+      ? '10'
+      : family === 'grok' && isGrok10sModel(normalizedModel)
+        ? '10'
+        : family === 'grok' && isGrokMaxModel(normalizedModel)
+          ? '10'
+          : family === 'grok'
+            ? '6'
+            : familyDefaultDuration;
+
   const normalizedDuration = durationOptions.some((option) => option.value === String(effectiveDuration))
     ? String(effectiveDuration)
-    : getDefaultVideoDuration(family);
+    : durationOptions.some((option) => option.value === String(modelDefaultDuration))
+      ? String(modelDefaultDuration)
+      : durationOptions[0]?.value || familyDefaultDuration;
 
   const isManxueProvider = family === 'seedance' && isSeedanceManxueModel(normalizedModel);
   const provider = isManxueProvider ? 'seedance-manxue' : config.provider;

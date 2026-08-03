@@ -375,16 +375,20 @@ async function createSeedanceManxueTask({
 
 async function createGrokTask({ token, prompt, settings, referenceImages }) {
   const images = buildReferenceImageUrls(referenceImages);
+  const modelName = settings.model || 'grok-imagine-video-1.5';
+  const isGrok15 =
+    String(modelName).includes('1.5') || String(modelName).includes('grok_video1.5');
+  const defaultDuration = isGrok15 ? 10 : 6;
   const data = await requestJson('/api/video/grok/create', {
     token,
     method: 'POST',
     body: {
-      modelName: settings.model,
+      modelName,
       prompt,
-      duration: Number(settings.duration) || 6,
-      quality: settings.quality,
-      ratio: settings.ratio,
-      imgUrl: images[0] || '',
+      duration: Number(settings.duration) || defaultDuration,
+      quality: settings.quality || '720p',
+      ratio: settings.ratio || '9:16',
+      imgUrl: images.join(','),
     },
   });
 

@@ -37,6 +37,7 @@ import {
   normalizeImageModelSettings,
   inferVideoFamily,
   getVideoReferenceImageMax,
+  grokRequiresReferenceImage,
   normalizeVideoModelSettings,
   VEO_REFERENCE_IMAGE_MAX,
   VIDEO_FRAME_IMAGE_CONNECTION_MAX,
@@ -2450,6 +2451,20 @@ function App() {
 
     if (mode === 'translate') {
       return runVideoGenerationActual(node, mode);
+    }
+
+    if (
+      inferVideoFamily(node) === 'grok' &&
+      grokRequiresReferenceImage(node.videoModel)
+    ) {
+      const refs = resolveVideoReferenceImages(node, nodes, connections);
+      if (!refs.length) {
+        updateNode(node.id, {
+          content: 'Grok 1.5 需要上传 1 张参考图',
+          status: 'error',
+        });
+        return;
+      }
     }
 
     const hasVideoRefs = getVideoInputLinks(node.id, nodes, connections).length > 0;
