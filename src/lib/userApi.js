@@ -30,6 +30,21 @@ export async function login({ username, password }) {
   return token;
 }
 
+/** Google 一键登录：前端 GSI credential → 后端 /api/google-login */
+export async function googleLogin(idToken) {
+  const tokenValue = String(idToken || '').trim();
+  if (!tokenValue) throw new Error('Google 登录凭证为空');
+  const data = await requestJimiaigo('/api/google-login', {
+    method: 'POST',
+    body: { id_token: tokenValue },
+    fallback: 'Google 登录失败',
+  });
+  const token = data?.JimiAiToken || data?.token;
+  if (!token) throw new Error('未获取到登录凭证');
+  saveAuthToken(token);
+  return token;
+}
+
 export async function register({
   email,
   nickname,

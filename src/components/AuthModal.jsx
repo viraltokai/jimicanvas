@@ -12,12 +12,16 @@ import {
 import { AnimatedCharacters } from './AnimatedCharacters';
 import {
   fetchPublicRoles,
+  googleLogin,
   login,
   register,
   sendEmailCode,
 } from '../lib/userApi';
 
 const CODE_COOLDOWN_SEC = 60;
+const GOOGLE_GSI_SCRIPT_ID = 'google-gsi-script';
+const DEFAULT_GOOGLE_CLIENT_ID =
+  '278580805734-savsj07lm0e8puru9as019reuno2kmq6.apps.googleusercontent.com';
 
 export function AuthModal({
   isOpen,
@@ -49,6 +53,9 @@ export function AuthModal({
 
   const activePassword = mode === 'login' ? loginForm.password : registerForm.password;
   const passwordLength = activePassword.length;
+  const googleClientId = String(
+    import.meta.env.VITE_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID,
+  ).trim();
 
   useEffect(() => {
     if (!isOpen) return;
@@ -91,6 +98,78 @@ export function AuthModal({
       cancelled = true;
     };
   }, [isOpen, mode]);
+
+  useEffect(() => {
+    if (!isOpen || mode !== 'login' || !googleClientId) return undefined;
+
+    let cancelled = false;
+
+    const handleGoogleCredential = async (idToken) => {
+      if (!idToken) {
+        setError('Google 登录失败');
+        return;
+      }
+      setSubmitting(true);
+      setError('');
+      try {
+        await googleLogin(idToken);
+        if (!cancelled) onSuccess?.();
+      } catch (err) {
+        if (!cancelled) setError(err.message || 'Google 登录失败');
+      } finally {
+        if (!cancelled) setSubmitting(false);
+      }
+    };
+
+    const initGoogle = () => {
+      if (cancelled) return;
+      const googleApi = window.google;
+      const target = document.getElementById('canvas-google-login-button');
+      if (!googleApi?.accounts?.id || !target) return;
+
+      googleApi.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: (response) => {
+          void handleGoogleCredential(response?.credential || '');
+        },
+      });
+      target.innerHTML = '';
+      googleApi.accounts.id.renderButton(target, {
+        theme: 'outline',
+        size: 'large',
+        width: 320,
+        shape: 'pill',
+        text: 'continue_with',
+      });
+    };
+
+    if (window.google?.accounts?.id) {
+      initGoogle();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    let script = document.getElementById(GOOGLE_GSI_SCRIPT_ID);
+    const onScriptLoad = () => initGoogle();
+    if (!script) {
+      script = document.createElement('script');
+      script.id = GOOGLE_GSI_SCRIPT_ID;
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      script.onload = onScriptLoad;
+      document.body.appendChild(script);
+    } else {
+      script.addEventListener('load', onScriptLoad);
+      if (window.google?.accounts?.id) initGoogle();
+    }
+
+    return () => {
+      cancelled = true;
+      script?.removeEventListener('load', onScriptLoad);
+    };
+  }, [googleClientId, isOpen, mode, onSuccess]);
 
   const formTitle = useMemo(
     () => (mode === 'login' ? '登录到工作台' : '创建你的账号'),
@@ -314,6 +393,18 @@ export function AuthModal({
                   {submitting ? <Loader2 size={16} className="spin" /> : null}
                   {submitting ? '登录中...' : '登录'}
                 </button>
+
+                {googleClientId ? (
+                  <>
+                    <div className="auth-divider" aria-hidden="true">
+                      <span>或</span>
+                    </div>
+                    <div
+                      id="canvas-google-login-button"
+                      className="auth-google-login"
+                    />
+                  </>
+                ) : null}
 
                 <p className="auth-switch-hint">
                   还没有账号？

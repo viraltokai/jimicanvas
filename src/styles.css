@@ -7723,6 +7723,29 @@ html[data-theme='light'] .canvas-home-user-dropdown-item.is-danger svg {
   cursor: not-allowed;
 }
 
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 2px 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-default);
+}
+
+.auth-google-login {
+  display: flex;
+  justify-content: center;
+  min-height: 44px;
+}
+
 .auth-switch-hint {
   margin: 4px 0 0;
   text-align: center;
