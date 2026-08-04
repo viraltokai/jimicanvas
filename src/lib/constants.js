@@ -113,6 +113,7 @@ export const VIDEO_FAMILY_OPTIONS = [
   { value: 'omni', label: 'Omni' },
   { value: 'seedance', label: 'Seedance' },
   { value: 'grok', label: 'Grok' },
+  { value: 'minimax', label: 'MiniMax H3' },
 ];
 
 export const VIDEO_COUNT_OPTIONS = [
@@ -275,7 +276,58 @@ export const VIDEO_FAMILY_CONFIG = {
     resolutionKey: 'quality',
     ratioKey: 'ratio',
   },
+  minimax: {
+    provider: 'minimax-h3',
+    models: [{ value: 'minimax-h3', label: 'MiniMax H3' }],
+    ratios: [
+      { value: '16:9', label: '16:9' },
+      { value: '9:16', label: '9:16' },
+      { value: '1:1', label: '1:1' },
+      { value: '4:3', label: '4:3' },
+      { value: '3:4', label: '3:4' },
+      { value: '21:9', label: '21:9' },
+    ],
+    sizes: {
+      '16:9': '2560x1440',
+      '9:16': '1440x2560',
+      '1:1': '1440x1440',
+      '4:3': '1920x1440',
+      '3:4': '1440x1920',
+      '21:9': '3360x1440',
+    },
+    durations: [
+      { value: '5', label: '5 秒' },
+      { value: '6', label: '6 秒' },
+      { value: '7', label: '7 秒' },
+      { value: '8', label: '8 秒' },
+      { value: '9', label: '9 秒' },
+      { value: '10', label: '10 秒' },
+      { value: '11', label: '11 秒' },
+      { value: '12', label: '12 秒' },
+      { value: '13', label: '13 秒' },
+      { value: '14', label: '14 秒' },
+      { value: '15', label: '15 秒' },
+    ],
+    defaultDuration: '5',
+    defaultOrientation: 'landscape',
+    maxCount: 1,
+    resolutionKey: 'size',
+    ratioKey: 'ratio',
+  },
 };
+
+export const MINIMAX_H3_MODEL = 'minimax-h3';
+export const MINIMAX_REFERENCE_IMAGE_MAX = 5;
+
+export function getMiniMaxH3Size(ratio = '16:9') {
+  const config = VIDEO_FAMILY_CONFIG.minimax;
+  return config.sizes?.[ratio] || config.sizes?.['16:9'] || '2560x1440';
+}
+
+export function isMiniMaxH3Model(model = '') {
+  const value = String(model).toLowerCase();
+  return value === MINIMAX_H3_MODEL || value.includes('minimax-h3') || value.includes('minimax_h3');
+}
 
 export const GROK_15_MODEL = 'grok-imagine-video-1.5';
 export const GROK_VIDEO3_MODEL = 'grok_video3';
@@ -370,6 +422,7 @@ export function inferVideoFamily(node = {}) {
   }
 
   const model = String(node.videoModel || '').toLowerCase();
+  if (model.includes('minimax') || model.includes('hailuo') || isMiniMaxH3Model(model)) return 'minimax';
   if (model.includes('grok')) return 'grok';
   if (isSeedanceManxueModel(model) || model.includes('seedance') || model.includes('doubao')) return 'seedance';
   if (model.includes('veo') || model.startsWith('sc-veo')) return 'veo';
@@ -383,6 +436,7 @@ export function getVideoReferenceImageMax(node = {}) {
   if (family === 'seedance') return SEEDANCE_REF_IMAGE_MAX;
   if (family === 'omni') return OMNI_REFERENCE_IMAGE_MAX;
   if (family === 'grok') return getGrokReferenceImageMax(node.videoModel);
+  if (family === 'minimax') return MINIMAX_REFERENCE_IMAGE_MAX;
   return VIDEO_GENERIC_REFERENCE_MAX;
 }
 
@@ -396,16 +450,16 @@ export function getVideoModelOptions(family) {
 
 export function getVideoResolutionOptions(family, model = '') {
   const config = getVideoFamilyConfig(family);
-  if (family === 'sora') {
+  if (family === 'sora' || family === 'minimax') {
     return [];
   }
   if (family === 'seedance' && isSeedanceManxueModel(model)) {
     return config.manxueResolutions || [];
   }
   if (family === 'seedance' && isSeedanceStandardModel(model)) {
-    return config.resolutions;
+    return config.resolutions || [];
   }
-  return config.resolutions;
+  return config.resolutions || [];
 }
 
 export function getVideoRatioOptions(family, model = '') {
@@ -413,23 +467,23 @@ export function getVideoRatioOptions(family, model = '') {
   if (family === 'grok' && isGrokMaxModel(model) && config.grokMaxRatios) {
     return config.grokMaxRatios;
   }
-  return config.ratios;
+  return config.ratios || [];
 }
 
 export function getVideoDurationOptions(family, model = '') {
   const config = getVideoFamilyConfig(family);
   if (family === 'seedance' && isSeedanceManxueModel(model)) {
-    return config.manxueDurations || config.durations;
+    return config.manxueDurations || config.durations || [];
   }
   if (family === 'seedance' && isSeedanceStandardModel(model)) {
-    return config.standardDurations || config.durations;
+    return config.standardDurations || config.durations || [];
   }
   if (family === 'grok') {
-    if (isGrok15Model(model)) return config.grok15Durations || config.durations;
-    if (isGrok10sModel(model)) return config.grok10sDurations || config.durations;
-    if (isGrokMaxModel(model)) return config.grokMaxDurations || config.durations;
+    if (isGrok15Model(model)) return config.grok15Durations || config.durations || [];
+    if (isGrok10sModel(model)) return config.grok10sDurations || config.durations || [];
+    if (isGrokMaxModel(model)) return config.grokMaxDurations || config.durations || [];
   }
-  return config.durations;
+  return config.durations || [];
 }
 
 export function getVideoCountOptions(family) {
@@ -496,6 +550,9 @@ export function normalizeVideoModelSettings({
   let normalizedResolution = resolution;
   if (family === 'sora') {
     normalizedResolution = defaultSoraSize(normalizedRatio);
+  } else if (family === 'minimax') {
+    // MiniMax H3 用 size（由比例映射），不走 resolution 列表
+    normalizedResolution = undefined;
   } else if (family === 'seedance' && isSeedanceManxueModel(normalizedModel)) {
     const manxueResolutionFromModel = isManxueSeedance && model !== SEEDANCE_MANXUE_MODEL
       ? resolutionFromManxueModel(model)
@@ -546,8 +603,13 @@ export function normalizeVideoModelSettings({
     apiModel,
     route: family === 'sora' ? route || config.route : undefined,
     provider,
-    size: family === 'sora' ? normalizedResolution : undefined,
-    resolution: family === 'sora' ? undefined : normalizedResolution,
+    size:
+      family === 'sora'
+        ? normalizedResolution
+        : family === 'minimax'
+          ? getMiniMaxH3Size(normalizedRatio)
+          : undefined,
+    resolution: family === 'sora' || family === 'minimax' ? undefined : normalizedResolution,
     quality: family === 'grok' ? normalizedResolution : undefined,
     orientation: family === 'sora' ? normalizedRatio : undefined,
     ratio: family === 'sora' ? undefined : normalizedRatio,

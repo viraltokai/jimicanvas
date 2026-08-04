@@ -104,6 +104,9 @@ export function resolveBillingModelName(node, options = {}) {
       if (isGrokMaxModel(modelName)) return GROK_MAX_MODEL;
       return GROK_VIDEO3_MODEL;
     }
+    if (family === 'minimax') {
+      return 'minimax-h3';
+    }
   }
 
   if (node.type === 'audio') {

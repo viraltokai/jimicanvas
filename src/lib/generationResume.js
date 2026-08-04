@@ -412,7 +412,7 @@ export async function executeVideoGeneration(
         settings,
         referenceImages: node.referenceImages || [],
         veoFrames:
-          family === 'veo'
+          family === 'veo' || family === 'minimax'
             ? {
                 firstFrame: node.videoFirstFrame,
                 lastFrame: node.videoLastFrame,

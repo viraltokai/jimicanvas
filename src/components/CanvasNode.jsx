@@ -1317,6 +1317,7 @@ export function VideoToolbar({
   const family = inferVideoFamily(node);
   const isVeo = family === 'veo';
   const isSeedance = family === 'seedance';
+  const isMinimax = family === 'minimax';
   const veoGenerationType = node.videoGenerationType || 'frame';
   const showVeoReferenceImages = isVeo && veoGenerationType === 'reference';
   const seedanceReferenceMode = isSeedance && assetReferences.length > 0;
@@ -1325,6 +1326,7 @@ export function VideoToolbar({
   const hasSeedanceFrames = showSeedanceFrames && Boolean(resolvedFirstFrame || resolvedLastFrame);
   const hasSeedanceReferenceImages = seedanceReferenceMode && resolvedReferences.length > 0;
   const showSeedanceReferenceMedia = isSeedance && !hasSeedanceFrames;
+  const showMinimaxFrames = isMinimax;
   const showGenericReferenceImages = !isVeo && !isSeedance;
   const modelOptions = getVideoModelOptions(family);
   const model = modelOptions.some((option) => option.value === node.videoModel)
@@ -1463,7 +1465,7 @@ export function VideoToolbar({
       patch.videoGenerationType = undefined;
     }
 
-    if (nextFamily !== 'veo' && nextFamily !== 'seedance') {
+    if (nextFamily !== 'veo' && nextFamily !== 'seedance' && nextFamily !== 'minimax') {
       patch.videoFirstFrame = null;
       patch.videoLastFrame = null;
     }
@@ -1817,6 +1819,26 @@ export function VideoToolbar({
                     if (!resolvedFirstFrame) return;
                     onOpenAssetLibrary(node.id, 'veo-last');
                   }}
+                  onClear={clearResolvedLastFrame}
+                />
+              </div>
+            ) : null}
+            {showMinimaxFrames ? (
+              <div className="veo-frame-row">
+                <VeoFrameSlot
+                  label="首帧"
+                  optional
+                  image={resolvedFirstFrame}
+                  disabled={isRunning}
+                  onPick={() => onOpenAssetLibrary(node.id, 'veo-first')}
+                  onClear={clearResolvedFirstFrame}
+                />
+                <VeoFrameSlot
+                  label="尾帧"
+                  optional
+                  image={resolvedLastFrame}
+                  disabled={isRunning}
+                  onPick={() => onOpenAssetLibrary(node.id, 'veo-last')}
                   onClear={clearResolvedLastFrame}
                 />
               </div>
@@ -2213,6 +2235,26 @@ export function VideoToolbar({
               if (!resolvedFirstFrame) return;
               onOpenAssetLibrary(node.id, 'veo-last');
             }}
+            onClear={clearResolvedLastFrame}
+          />
+        </div>
+      ) : null}
+      {showMinimaxFrames ? (
+        <div className="veo-frame-row">
+          <VeoFrameSlot
+            label="首帧"
+            optional
+            image={resolvedFirstFrame}
+            disabled={isRunning}
+            onPick={() => onOpenAssetLibrary(node.id, 'veo-first')}
+            onClear={clearResolvedFirstFrame}
+          />
+          <VeoFrameSlot
+            label="尾帧"
+            optional
+            image={resolvedLastFrame}
+            disabled={isRunning}
+            onPick={() => onOpenAssetLibrary(node.id, 'veo-last')}
             onClear={clearResolvedLastFrame}
           />
         </div>

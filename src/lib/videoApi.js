@@ -400,6 +400,42 @@ async function createGrokTask({ token, prompt, settings, referenceImages }) {
   return { taskId: String(taskId), provider: 'grok' };
 }
 
+async function createMiniMaxH3Task({ token, prompt, settings, referenceImages, veoFrames = {} }) {
+  const images = buildReferenceImageUrls(referenceImages);
+  const ratio = settings.ratio || '16:9';
+  const sizeMap = {
+    '16:9': '2560x1440',
+    '9:16': '1440x2560',
+    '1:1': '1440x1440',
+    '4:3': '1920x1440',
+    '3:4': '1440x1920',
+    '21:9': '3360x1440',
+  };
+  const firstImage = String(veoFrames.firstFrame || '').trim();
+  const lastImage = String(veoFrames.lastFrame || '').trim();
+  const data = await requestJson('/api/video/minimax/h3/videos', {
+    token,
+    method: 'POST',
+    body: {
+      model: 'minimax-h3',
+      prompt,
+      duration: Number(settings.duration) || 5,
+      aspect_ratio: ratio,
+      size: settings.size || sizeMap[ratio] || '2560x1440',
+      reference_images: images.slice(0, 5),
+      first_image: firstImage || undefined,
+      last_image: lastImage || undefined,
+    },
+  });
+
+  const taskId = extractTaskId(data) || data?.task_id;
+  if (!taskId) {
+    throw new Error('MiniMax H3 任务创建成功，但未返回任务 ID');
+  }
+
+  return { taskId: String(taskId), provider: 'minimax-h3' };
+}
+
 export async function createVideoGenerationTask({
   token,
   prompt,
@@ -419,6 +455,8 @@ export async function createVideoGenerationTask({
       return createSeedanceManxueTask({ token, prompt, settings, referenceImages, seedanceInputs });
     case 'grok':
       return createGrokTask({ token, prompt, settings, referenceImages });
+    case 'minimax':
+      return createMiniMaxH3Task({ token, prompt, settings, referenceImages, veoFrames });
     case 'sora':
     default:
       return createSoraTask({ token, prompt, settings, referenceImages });
