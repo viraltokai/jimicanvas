@@ -436,6 +436,57 @@ async function createMiniMaxH3Task({ token, prompt, settings, referenceImages, v
   return { taskId: String(taskId), provider: 'minimax-h3' };
 }
 
+function pickPublicMediaUrl(item) {
+  if (!item) return '';
+  if (typeof item === 'string') {
+    const value = item.trim();
+    return value.startsWith('asset://') ? '' : value;
+  }
+  const candidates = [item.url, item.preview, item.previewUrl, item.data, item.originalUrl];
+  for (const candidate of candidates) {
+    const value = String(candidate || '').trim();
+    if (value && !value.startsWith('asset://')) return value;
+  }
+  return '';
+}
+
+async function createSeedance25Task({
+  token,
+  prompt,
+  settings,
+  referenceImages,
+  seedanceInputs = {},
+}) {
+  const images = buildReferenceImageUrls(referenceImages).slice(0, 30);
+  const videos = (seedanceInputs.referenceVideos || []).map(pickPublicMediaUrl).filter(Boolean).slice(0, 10);
+  const audios = (seedanceInputs.referenceAudios || []).map(pickPublicMediaUrl).filter(Boolean).slice(0, 10);
+  const resolution = String(settings.resolution || '480p').toLowerCase() === '720p' ? '720p' : '480p';
+  const ratio = ['16:9', '9:16', '1:1'].includes(settings.ratio) ? settings.ratio : '9:16';
+  const duration = Math.min(30, Math.max(4, Number(settings.duration) || 4));
+
+  const data = await requestJson('/api/video/seedance/25/videos', {
+    token,
+    method: 'POST',
+    body: {
+      model: 'seedance-2.5',
+      prompt,
+      duration,
+      aspect_ratio: ratio,
+      resolution,
+      reference_images: images,
+      reference_videos: videos,
+      reference_audios: audios,
+    },
+  });
+
+  const taskId = extractTaskId(data) || data?.task_id;
+  if (!taskId) {
+    throw new Error('Seedance 2.5 任务创建成功，但未返回任务 ID');
+  }
+
+  return { taskId: String(taskId), provider: 'seedance-2.5' };
+}
+
 export async function createVideoGenerationTask({
   token,
   prompt,
@@ -453,6 +504,8 @@ export async function createVideoGenerationTask({
       return createOmniTask({ token, prompt, settings, referenceImages });
     case 'seedance':
       return createSeedanceManxueTask({ token, prompt, settings, referenceImages, seedanceInputs });
+    case 'seedance25':
+      return createSeedance25Task({ token, prompt, settings, referenceImages, seedanceInputs });
     case 'grok':
       return createGrokTask({ token, prompt, settings, referenceImages });
     case 'minimax':

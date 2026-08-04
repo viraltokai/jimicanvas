@@ -97,6 +97,9 @@ export function resolveBillingModelName(node, options = {}) {
       };
       return map[resolution] || 'sd2_mx_720p';
     }
+    if (family === 'seedance25') {
+      return `seedance-2.5-${resolution === '720p' ? '720p' : '480p'}`;
+    }
     if (family === 'grok') {
       const modelName = String(node.videoModel || options.model || '').trim();
       if (isGrok15Model(modelName)) return GROK_15_MODEL;

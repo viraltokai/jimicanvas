@@ -50,6 +50,8 @@ import {
   SEEDANCE_REF_IMAGE_MAX,
   SEEDANCE_REF_VIDEO_MAX,
   SEEDANCE_REF_AUDIO_MAX,
+  SEEDANCE25_REF_VIDEO_MAX,
+  SEEDANCE25_REF_AUDIO_MAX,
   getImageReferenceMax,
   AUDIO_VOICE_OPTIONS,
   AUDIO_SPEED_OPTIONS,
@@ -139,6 +141,38 @@ function OptionSegment({ title, options, value, onChange, renderIcon }) {
             </button>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function DurationRangeSlider({ title, value, options, onChange }) {
+  const values = options.map((option) => Number(option.value)).filter((n) => Number.isFinite(n));
+  const min = values.length ? Math.min(...values) : 4;
+  const max = values.length ? Math.max(...values) : 30;
+  const current = Number(value);
+  const safeValue = Number.isFinite(current) ? Math.min(max, Math.max(min, current)) : min;
+
+  return (
+    <div className="option-segment">
+      <div className="option-segment-title">
+        {title}
+        <span className="option-segment-title-value">{safeValue}s</span>
+      </div>
+      <div className="option-segment-control option-segment-slider">
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={1}
+          value={safeValue}
+          onChange={(event) => onChange(String(event.target.value))}
+          aria-label={title}
+        />
+        <div className="option-segment-slider-labels">
+          <span>{min}s</span>
+          <span>{max}s</span>
+        </div>
       </div>
     </div>
   );
@@ -1173,7 +1207,7 @@ function SeedanceMediaPanel({
           disabled={isRunning || disabled || items.length >= maxCount}
           title={
             disabledHint ||
-            (items.length >= maxCount ? `最多 ${maxCount} 个` : `从满血版素材库选择${label}`)
+            (items.length >= maxCount ? `最多 ${maxCount} 个` : `从资产库选择${label}`)
           }
         >
           <FolderOpen size={12} />
@@ -1317,6 +1351,7 @@ export function VideoToolbar({
   const family = inferVideoFamily(node);
   const isVeo = family === 'veo';
   const isSeedance = family === 'seedance';
+  const isSeedance25 = family === 'seedance25';
   const isMinimax = family === 'minimax';
   const veoGenerationType = node.videoGenerationType || 'frame';
   const showVeoReferenceImages = isVeo && veoGenerationType === 'reference';
@@ -1328,6 +1363,7 @@ export function VideoToolbar({
   const showSeedanceReferenceMedia = isSeedance && !hasSeedanceFrames;
   const showMinimaxFrames = isMinimax;
   const showGenericReferenceImages = !isVeo && !isSeedance;
+  const showSeedance25Media = isSeedance25;
   const modelOptions = getVideoModelOptions(family);
   const model = modelOptions.some((option) => option.value === node.videoModel)
     ? node.videoModel
@@ -1470,7 +1506,7 @@ export function VideoToolbar({
       patch.videoLastFrame = null;
     }
 
-    if (nextFamily !== 'seedance') {
+    if (nextFamily !== 'seedance' && nextFamily !== 'seedance25') {
       patch.videoReferenceVideos = [];
       patch.videoReferenceAudios = [];
     }
@@ -1597,14 +1633,22 @@ export function VideoToolbar({
     />
   );
 
-  const durationSegment = (
-    <OptionSegment
-      title="时长"
-      value={normalizedSettings.duration}
-      options={durationOptions}
-      onChange={(value) => onUpdateNode(node.id, { videoDuration: value })}
-    />
-  );
+  const durationSegment =
+    durationOptions.length > 8 ? (
+      <DurationRangeSlider
+        title="时长"
+        value={normalizedSettings.duration}
+        options={durationOptions}
+        onChange={(value) => onUpdateNode(node.id, { videoDuration: value })}
+      />
+    ) : (
+      <OptionSegment
+        title="时长"
+        value={normalizedSettings.duration}
+        options={durationOptions}
+        onChange={(value) => onUpdateNode(node.id, { videoDuration: value })}
+      />
+    );
 
   const videoModelPanels = (
     <div className="settings-options-stack">
@@ -1840,6 +1884,38 @@ export function VideoToolbar({
                   disabled={isRunning}
                   onPick={() => onOpenAssetLibrary(node.id, 'veo-last')}
                   onClear={clearResolvedLastFrame}
+                />
+              </div>
+            ) : null}
+            {showSeedance25Media ? (
+              <div className="seedance-section">
+                <SeedanceMediaPanel
+                  label="参考视频"
+                  icon={Film}
+                  mediaType="video"
+                  items={referenceVideos}
+                  maxCount={SEEDANCE25_REF_VIDEO_MAX}
+                  disabled={isRunning}
+                  isRunning={isRunning}
+                  onPick={() => onOpenAssetLibrary(node.id, 's25-ref-video')}
+                  onRemove={(index) => {
+                    const next = referenceVideos.filter((_, i) => i !== index);
+                    onUpdateNode(node.id, { videoReferenceVideos: next, status: 'idle' });
+                  }}
+                />
+                <SeedanceMediaPanel
+                  label="参考音频"
+                  icon={Headphones}
+                  mediaType="audio"
+                  items={referenceAudios}
+                  maxCount={SEEDANCE25_REF_AUDIO_MAX}
+                  disabled={isRunning}
+                  isRunning={isRunning}
+                  onPick={() => onOpenAssetLibrary(node.id, 's25-ref-audio')}
+                  onRemove={(index) => {
+                    const next = referenceAudios.filter((_, i) => i !== index);
+                    onUpdateNode(node.id, { videoReferenceAudios: next, status: 'idle' });
+                  }}
                 />
               </div>
             ) : null}
@@ -2260,7 +2336,38 @@ export function VideoToolbar({
         </div>
       ) : null}
 
-
+      {showSeedance25Media ? (
+        <div className="seedance-section">
+          <SeedanceMediaPanel
+            label="参考视频"
+            icon={Film}
+            mediaType="video"
+            items={referenceVideos}
+            maxCount={SEEDANCE25_REF_VIDEO_MAX}
+            disabled={isRunning}
+            isRunning={isRunning}
+            onPick={() => onOpenAssetLibrary(node.id, 's25-ref-video')}
+            onRemove={(index) => {
+              const next = referenceVideos.filter((_, i) => i !== index);
+              onUpdateNode(node.id, { videoReferenceVideos: next, status: 'idle' });
+            }}
+          />
+          <SeedanceMediaPanel
+            label="参考音频"
+            icon={Headphones}
+            mediaType="audio"
+            items={referenceAudios}
+            maxCount={SEEDANCE25_REF_AUDIO_MAX}
+            disabled={isRunning}
+            isRunning={isRunning}
+            onPick={() => onOpenAssetLibrary(node.id, 's25-ref-audio')}
+            onRemove={(index) => {
+              const next = referenceAudios.filter((_, i) => i !== index);
+              onUpdateNode(node.id, { videoReferenceAudios: next, status: 'idle' });
+            }}
+          />
+        </div>
+      ) : null}
 
       <div className="node-bottom-actions image-bottom-actions">
         {variant !== 'modal' && (

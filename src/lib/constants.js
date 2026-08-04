@@ -62,6 +62,10 @@ export const VIDEO_REFERENCE_IMAGE_CONNECTION_MAX = 3;
 export const SEEDANCE_REF_IMAGE_MAX = 9;
 export const SEEDANCE_REF_VIDEO_MAX = 3;
 export const SEEDANCE_REF_AUDIO_MAX = 3;
+export const SEEDANCE25_REF_IMAGE_MAX = 30;
+export const SEEDANCE25_REF_VIDEO_MAX = 10;
+export const SEEDANCE25_REF_AUDIO_MAX = 10;
+export const SEEDANCE25_MODEL = 'seedance-2.5';
 export const VIDEO_GENERIC_REFERENCE_MAX = 5;
 /** Gemini Omni 参考图上限 */
 export const OMNI_REFERENCE_IMAGE_MAX = 7;
@@ -112,6 +116,7 @@ export const VIDEO_FAMILY_OPTIONS = [
   { value: 'veo', label: 'VEO' },
   { value: 'omni', label: 'Omni' },
   { value: 'seedance', label: 'Seedance' },
+  { value: 'seedance25', label: 'Seedance 2.5' },
   { value: 'grok', label: 'Grok' },
   { value: 'minimax', label: 'MiniMax H3' },
 ];
@@ -227,6 +232,28 @@ export const VIDEO_FAMILY_CONFIG = {
       { value: '15', label: '15 秒' },
     ],
     maxCount: 3,
+    resolutionKey: 'resolution',
+    ratioKey: 'ratio',
+  },
+  seedance25: {
+    provider: 'seedance-2.5',
+    models: [{ value: 'seedance-2.5', label: 'Seedance 2.5' }],
+    resolutions: [
+      { value: '480p', label: '480p' },
+      { value: '720p', label: '720p' },
+    ],
+    ratios: [
+      { value: '16:9', label: '16:9' },
+      { value: '9:16', label: '9:16' },
+      { value: '1:1', label: '1:1' },
+    ],
+    durations: Array.from({ length: 27 }, (_, i) => {
+      const value = String(i + 4);
+      return { value, label: `${value} 秒` };
+    }),
+    defaultDuration: '4',
+    defaultOrientation: 'portrait',
+    maxCount: 1,
     resolutionKey: 'resolution',
     ratioKey: 'ratio',
   },
@@ -416,6 +443,22 @@ export function normalizeSeedanceUiModel(model = '') {
   return model;
 }
 
+export function isSeedance25Model(model = '') {
+  const value = String(model).toLowerCase().replace(/_/g, '-');
+  return (
+    value === SEEDANCE25_MODEL ||
+    value === 'seedance2.5' ||
+    value === 'seedance25' ||
+    value.startsWith('seedance-2.5-') ||
+    value.startsWith('seedance2.5-')
+  );
+}
+
+export function buildSeedance25BillingModel(resolution = '480p') {
+  const res = String(resolution).toLowerCase() === '720p' ? '720p' : '480p';
+  return `${SEEDANCE25_MODEL}-${res}`;
+}
+
 export function inferVideoFamily(node = {}) {
   if (node.videoFamily && VIDEO_FAMILY_CONFIG[node.videoFamily]) {
     return node.videoFamily;
@@ -424,6 +467,7 @@ export function inferVideoFamily(node = {}) {
   const model = String(node.videoModel || '').toLowerCase();
   if (model.includes('minimax') || model.includes('hailuo') || isMiniMaxH3Model(model)) return 'minimax';
   if (model.includes('grok')) return 'grok';
+  if (isSeedance25Model(model)) return 'seedance25';
   if (isSeedanceManxueModel(model) || model.includes('seedance') || model.includes('doubao')) return 'seedance';
   if (model.includes('veo') || model.startsWith('sc-veo')) return 'veo';
   if (model.includes('omni') || model.includes('gemini')) return 'omni';
@@ -434,6 +478,7 @@ export function getVideoReferenceImageMax(node = {}) {
   const family = inferVideoFamily(node);
   if (family === 'veo') return VEO_REFERENCE_IMAGE_MAX;
   if (family === 'seedance') return SEEDANCE_REF_IMAGE_MAX;
+  if (family === 'seedance25') return SEEDANCE25_REF_IMAGE_MAX;
   if (family === 'omni') return OMNI_REFERENCE_IMAGE_MAX;
   if (family === 'grok') return getGrokReferenceImageMax(node.videoModel);
   if (family === 'minimax') return MINIMAX_REFERENCE_IMAGE_MAX;

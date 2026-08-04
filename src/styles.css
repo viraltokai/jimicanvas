@@ -1941,6 +1941,15 @@ button {
 .option-segment-title {
   color: var(--node-option-label);
   font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.option-segment-title-value {
+  color: var(--node-option-text);
+  font-weight: 600;
 }
 
 .option-segment-control {
@@ -1953,6 +1962,27 @@ button {
   border-radius: 13px;
   background: var(--node-option-panel-bg);
   border: 1px solid var(--node-option-panel-border);
+}
+
+.option-segment-slider {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 6px;
+  justify-content: center;
+  padding: 10px 12px;
+}
+
+.option-segment-slider input[type='range'] {
+  width: 100%;
+  accent-color: #3b82f6;
+  cursor: pointer;
+}
+
+.option-segment-slider-labels {
+  display: flex;
+  justify-content: space-between;
+  color: var(--node-option-label);
+  font-size: 11px;
 }
 
 .option-segment-button {

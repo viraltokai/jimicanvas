@@ -44,6 +44,8 @@ import {
   SEEDANCE_REF_IMAGE_MAX,
   SEEDANCE_REF_VIDEO_MAX,
   SEEDANCE_REF_AUDIO_MAX,
+  SEEDANCE25_REF_VIDEO_MAX,
+  SEEDANCE25_REF_AUDIO_MAX,
   VIDEO_GENERIC_REFERENCE_MAX,
   getImageReferenceMax,
 } from './lib/constants';
@@ -2611,6 +2613,22 @@ function App() {
         subtitle: `选择参考音频（最多 ${SEEDANCE_REF_AUDIO_MAX} 个）`,
       };
     }
+    if (pickMode === 's25-ref-video') {
+      const currentCount = Array.isArray(node?.videoReferenceVideos) ? node.videoReferenceVideos.length : 0;
+      return {
+        maxCount: Math.max(1, SEEDANCE25_REF_VIDEO_MAX - currentCount),
+        title: '资产库',
+        subtitle: `选择参考视频（最多 ${SEEDANCE25_REF_VIDEO_MAX} 个）`,
+      };
+    }
+    if (pickMode === 's25-ref-audio') {
+      const currentCount = Array.isArray(node?.videoReferenceAudios) ? node.videoReferenceAudios.length : 0;
+      return {
+        maxCount: Math.max(1, SEEDANCE25_REF_AUDIO_MAX - currentCount),
+        title: '资产库',
+        subtitle: `选择参考音频（最多 ${SEEDANCE25_REF_AUDIO_MAX} 个）`,
+      };
+    }
     if (pickMode === 'veo-reference') {
       const currentCount = Array.isArray(node?.referenceImages) ? node.referenceImages.length : 0;
       return {
@@ -2716,8 +2734,8 @@ function App() {
   }
 
   function applyPickedAssetsToNode(node, pickMode, pickedAssets, source) {
-    const isVideoOutput = pickMode === 'video-output';
-    const isAudioOutput = pickMode === 'audio-output';
+    const isVideoOutput = pickMode === 'video-output' || pickMode === 's25-ref-video';
+    const isAudioOutput = pickMode === 'audio-output' || pickMode === 's25-ref-audio';
     const isSeedancePick = String(pickMode).startsWith('seedance-');
     const normalized = isSeedancePick
       ? pickedAssets.map((asset) => {
@@ -2783,6 +2801,22 @@ function App() {
       return {
         ...node,
         videoReferenceAudios: [...current, ...normalized].slice(0, SEEDANCE_REF_AUDIO_MAX),
+        status: 'idle',
+      };
+    }
+    if (pickMode === 's25-ref-video') {
+      const current = Array.isArray(node.videoReferenceVideos) ? node.videoReferenceVideos : [];
+      return {
+        ...node,
+        videoReferenceVideos: [...current, ...normalized].slice(0, SEEDANCE25_REF_VIDEO_MAX),
+        status: 'idle',
+      };
+    }
+    if (pickMode === 's25-ref-audio') {
+      const current = Array.isArray(node.videoReferenceAudios) ? node.videoReferenceAudios : [];
+      return {
+        ...node,
+        videoReferenceAudios: [...current, ...normalized].slice(0, SEEDANCE25_REF_AUDIO_MAX),
         status: 'idle',
       };
     }
@@ -3085,9 +3119,9 @@ function App() {
     }
 
     const isSeedanceLibrary = String(pickMode).startsWith('seedance-');
-    const mediaType = pickMode === 'video-output' || pickMode === 'seedance-ref-video'
+    const mediaType = pickMode === 'video-output' || pickMode === 'seedance-ref-video' || pickMode === 's25-ref-video'
       ? 'video'
-      : pickMode === 'seedance-ref-audio' || pickMode === 'audio-output'
+      : pickMode === 'seedance-ref-audio' || pickMode === 'audio-output' || pickMode === 's25-ref-audio'
         ? 'audio'
         : 'image';
     const assetSource = pickMode === 'video-output' || pickMode === 'audio-output' ? 'local' : source;
@@ -4022,9 +4056,9 @@ function App() {
             title={assetPicker.title}
             subtitle={assetPicker.subtitle}
             mediaType={
-              assetPicker.pickMode === 'video-output'
+              assetPicker.pickMode === 'video-output' || assetPicker.pickMode === 's25-ref-video'
                 ? 'video'
-                : assetPicker.pickMode === 'audio-output'
+                : assetPicker.pickMode === 'audio-output' || assetPicker.pickMode === 's25-ref-audio'
                   ? 'audio'
                   : 'image'
             }
