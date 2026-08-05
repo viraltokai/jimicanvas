@@ -130,9 +130,18 @@ export function calculateEstimatedCost(pricingList, node, profile, options = {})
 
   const unitPrice = calculateCost(pricingList, billingModel, profile);
   const pricingType = p.pricing_type || 'standard';
+  const family = node.type === 'video' ? node.videoFamily : '';
+  const duration = Number(options.duration || (node.type === 'video' ? node.videoDuration : 0)) || 0;
+
+  // Seedance 2.5 / Grok 等按秒模型：强制单价 × 时长（不依赖 pricing_type 配置）
+  if (family === 'seedance25' || family === 'grok') {
+    if (duration > 0) {
+      return Math.round(unitPrice * duration * 10000) / 10000;
+    }
+    return 0;
+  }
 
   if (pricingType === 'seconds') {
-    const duration = Number(options.duration || (node.type === 'video' ? node.videoDuration : 0)) || 0;
     if (duration > 0) {
       return Math.round(unitPrice * duration * 10000) / 10000;
     }
