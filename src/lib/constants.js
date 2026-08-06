@@ -194,7 +194,10 @@ export const VIDEO_FAMILY_CONFIG = {
   },
   seedance: {
     provider: 'seedance-manxue',
-    models: [{ value: 'seedance-2.0-manxue', label: 'Seedance 2.0 满血版' }],
+    models: [
+      { value: 'seedance-2.0-manxue', label: 'Seedance 2.0 满血版' },
+      { value: 'seedance2.0-933', label: 'Seedance 2.0 933' },
+    ],
     resolutions: [
       { value: '480p', label: '480p' },
       { value: '720p', label: '720p' },
@@ -204,6 +207,11 @@ export const VIDEO_FAMILY_CONFIG = {
       { value: '1080p', label: '1080P' },
       { value: '2k', label: '2K' },
       { value: '4k', label: '4K' },
+    ],
+    c933Resolutions: [
+      { value: '480p', label: '480p' },
+      { value: '720p', label: '720p' },
+      { value: '1080p', label: '1080p' },
     ],
     manxueDurations: [
       { value: '4', label: '4 秒' },
@@ -217,6 +225,15 @@ export const VIDEO_FAMILY_CONFIG = {
     standardDurations: [
       { value: '5', label: '5 秒' },
       { value: '10', label: '10 秒' },
+      { value: '15', label: '15 秒' },
+    ],
+    c933Durations: [
+      { value: '4', label: '4 秒' },
+      { value: '5', label: '5 秒' },
+      { value: '6', label: '6 秒' },
+      { value: '8', label: '8 秒' },
+      { value: '10', label: '10 秒' },
+      { value: '12', label: '12 秒' },
       { value: '15', label: '15 秒' },
     ],
     ratios: [
@@ -405,6 +422,10 @@ export function isSeedanceStandardModel(model = '') {
   return String(model) === 'doubao-seedance-2.0';
 }
 
+export function isSeedance933Model(model = '') {
+  return String(model).toLowerCase().includes('933');
+}
+
 export function resolutionFromManxueModel(model = '') {
   const value = String(model).toLowerCase();
   if (value.includes('720p')) return '720p';
@@ -504,6 +525,9 @@ export function getVideoResolutionOptions(family, model = '') {
   if (family === 'seedance' && isSeedanceStandardModel(model)) {
     return config.resolutions || [];
   }
+  if (family === 'seedance' && isSeedance933Model(model)) {
+    return config.c933Resolutions || [];
+  }
   return config.resolutions || [];
 }
 
@@ -522,6 +546,9 @@ export function getVideoDurationOptions(family, model = '') {
   }
   if (family === 'seedance' && isSeedanceStandardModel(model)) {
     return config.standardDurations || config.durations || [];
+  }
+  if (family === 'seedance' && isSeedance933Model(model)) {
+    return config.c933Durations || config.durations || [];
   }
   if (family === 'grok') {
     if (isGrok15Model(model)) return config.grok15Durations || config.durations || [];

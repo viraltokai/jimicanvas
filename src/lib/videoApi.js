@@ -487,6 +487,48 @@ async function createSeedance25Task({
   return { taskId: String(taskId), provider: 'seedance-2.5' };
 }
 
+async function createSeedance933Task({
+  token,
+  prompt,
+  settings,
+  referenceImages,
+  seedanceInputs = {},
+}) {
+  const images = buildReferenceImageUrls(referenceImages).slice(0, 9);
+  const videos = (seedanceInputs.referenceVideos || []).map(pickPublicMediaUrl).filter(Boolean).slice(0, 3);
+  const audios = (seedanceInputs.referenceAudios || []).map(pickPublicMediaUrl).filter(Boolean).slice(0, 3);
+
+  const resolution = settings.resolution || '480p';
+  const ratio = settings.ratio || '16:9';
+  const duration = Number(settings.duration) || 4;
+
+  const data = await requestJson('/api/video/seedance/933/videos', {
+    token,
+    method: 'POST',
+    body: {
+      model: 'seedance2.0-933',
+      prompt,
+      duration,
+      ratio,
+      aspect_ratio: ratio,
+      resolution,
+      reference_images: images,
+      images,
+      reference_videos: videos,
+      videos,
+      reference_audios: audios,
+      audios,
+    },
+  });
+
+  const taskId = extractTaskId(data) || data?.task_id;
+  if (!taskId) {
+    throw new Error('Seedance 2.0 933 任务创建成功，但未返回任务 ID');
+  }
+
+  return { taskId: String(taskId), provider: 'seedance-933' };
+}
+
 export async function createVideoGenerationTask({
   token,
   prompt,
@@ -503,6 +545,9 @@ export async function createVideoGenerationTask({
     case 'omni':
       return createOmniTask({ token, prompt, settings, referenceImages });
     case 'seedance':
+      if (settings.model === 'seedance2.0-933') {
+        return createSeedance933Task({ token, prompt, settings, referenceImages, seedanceInputs });
+      }
       return createSeedanceManxueTask({ token, prompt, settings, referenceImages, seedanceInputs });
     case 'seedance25':
       return createSeedance25Task({ token, prompt, settings, referenceImages, seedanceInputs });

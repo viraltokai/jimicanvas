@@ -89,6 +89,11 @@ export function resolveBillingModelName(node, options = {}) {
       return `${model}-${resolution}-${duration}s`;
     }
     if (family === 'seedance') {
+      const modelName = String(node.videoModel || options.model || '').trim();
+      if (modelName === 'seedance2.0-933' || modelName.includes('933')) {
+        const res = resolution === '1080p' ? '1080p' : (resolution === '720p' ? '720p' : '480p');
+        return `seedance2.0-933-${res}`;
+      }
       const map = {
         '720p': 'sd2_mx_720p',
         '1080p': 'sd2_mx_1080p',
