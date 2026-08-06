@@ -98,7 +98,7 @@ const COPY = {
     },
     aiVideo: {
       title: 'AI 生视频',
-      desc: '支持 Sora、VEO 等多线路视频生成，与图片节点协同编排。',
+      desc: '支持 Seedance、VEO、Omni 等多线路视频生成，与图片节点协同编排。',
     },
     cloud: {
       title: '云端同步',

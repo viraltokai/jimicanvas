@@ -28,7 +28,6 @@ import {
   getImageCountOptions,
   getVideoCountOptions,
   getVideoDurationOptions,
-  getVideoModelOptions,
   getVideoRatioOptions,
   getVideoResolutionOptions,
   defaultSoraSize,
@@ -41,6 +40,10 @@ import {
   getImageQualityOptions,
   normalizeImageModelSettings,
   normalizeVideoModelSettings,
+  normalizeSoraRouteVisibility,
+  getVisibleVideoFamilyOptions,
+  getVideoModelOptionsForVisibility,
+  isSoraFamilyVisible,
   VIDEO_FAMILY_OPTIONS,
   VEO_GENERATION_TYPE_OPTIONS,
   DEFAULT_IMAGE_URL,
@@ -61,7 +64,12 @@ import {
   DEFAULT_AUDIO_MODEL,
 } from '../lib/constants';
 import { getStoredChatToken } from '../lib/jimiaigoApi';
-import { getSd2ManxueAssetList, normalizeVideoUrl, resolveSeedanceMediaPreviewUrl } from '../lib/videoApi';
+import {
+  getSd2ManxueAssetList,
+  getSoraRouteVisibility,
+  normalizeVideoUrl,
+  resolveSeedanceMediaPreviewUrl,
+} from '../lib/videoApi';
 import { isImageContent, isVideoContent, isAudioContent } from '../lib/canvas';
 import { normalizeAudioUrl, AUDIO_FILE_ACCEPT, filterAudioFiles } from '../lib/audioApi';
 import {
@@ -1316,7 +1324,26 @@ export function VideoToolbar({
 }) {
   const toolbarRef = useRef(null);
   const [activePopover, setActivePopover] = useState(null); // 'model' | 'params' | null
+  const [soraVisibility, setSoraVisibility] = useState(() => normalizeSoraRouteVisibility());
   const popoverRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = getStoredChatToken();
+        const res = await getSoraRouteVisibility({ token });
+        if (cancelled) return;
+        const payload = res?.data ?? res;
+        setSoraVisibility(normalizeSoraRouteVisibility(payload));
+      } catch {
+        // keep defaults (show Sora)
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!activePopover) return;
@@ -1364,7 +1391,8 @@ export function VideoToolbar({
   const showMinimaxFrames = isMinimax;
   const showGenericReferenceImages = !isVeo && !isSeedance;
   const showSeedance25Media = isSeedance25;
-  const modelOptions = getVideoModelOptions(family);
+  const familyOptions = getVisibleVideoFamilyOptions(soraVisibility);
+  const modelOptions = getVideoModelOptionsForVisibility(family, soraVisibility);
   const model = modelOptions.some((option) => option.value === node.videoModel)
     ? node.videoModel
     : modelOptions[0]?.value || node.videoModel;
@@ -1606,6 +1634,22 @@ export function VideoToolbar({
     });
   }
 
+  useEffect(() => {
+    if (family !== 'sora') return;
+    if (!isSoraFamilyVisible(soraVisibility)) {
+      applyFamilyChange('seedance');
+      return;
+    }
+    const visibleModels = getVideoModelOptionsForVisibility('sora', soraVisibility);
+    if (visibleModels.length === 0) {
+      applyFamilyChange('seedance');
+      return;
+    }
+    if (!visibleModels.some((option) => option.value === node.videoModel)) {
+      applyModelChange(visibleModels[0].value);
+    }
+  }, [family, soraVisibility, node.videoModel, node.id]);
+
   const showResolutionControl = resolutionOptions.length > 0;
   const shareRatioDurationRow = ratioOptions.length <= 3 && durationOptions.length <= 3;
 
@@ -1655,7 +1699,7 @@ export function VideoToolbar({
       <OptionSegment
         title="系列"
         value={family}
-        options={VIDEO_FAMILY_OPTIONS}
+        options={familyOptions}
         onChange={(nextFamily) => {
           applyFamilyChange(nextFamily);
           setActivePopover(null);
@@ -1990,7 +2034,9 @@ export function VideoToolbar({
   ].filter(Boolean);
   const summaryText = summaryParts.join(' | ') || '参数';
   const familyLabel =
-    VIDEO_FAMILY_OPTIONS.find((option) => option.value === family)?.label || family;
+    familyOptions.find((option) => option.value === family)?.label ||
+    VIDEO_FAMILY_OPTIONS.find((option) => option.value === family)?.label ||
+    family;
   const modelOptionLabel = modelOptions.find((option) => option.value === normalizedSettings.model)?.label;
   const modelTriggerText =
     modelOptions.length > 1 && modelOptionLabel && modelOptionLabel !== familyLabel

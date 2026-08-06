@@ -3784,7 +3784,7 @@ function App() {
     } else if (type === 'video') {
       typeName = '视频生成';
       const family = inferVideoFamily(node);
-      modelName = node.videoModel || (family === 'sora' ? 'sora2-gz-sp' : '');
+      modelName = node.videoModel || (family === 'seedance' ? 'seedance-2.0-manxue' : '');
       params = [
         `比例: ${node.videoRatio || node.videoOrientation || '16:9'}`,
         `分辨率: ${node.videoResolution || '720p'}`,

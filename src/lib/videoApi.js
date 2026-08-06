@@ -47,6 +47,11 @@ export function normalizeVideoUrl(url) {
   return normalizeImageUrl(value);
 }
 
+export async function getSoraRouteVisibility({ token } = {}) {
+  const data = await requestJson('/api/video/sora/routes', { token, method: 'GET' });
+  return data;
+}
+
 function requestJson(path, options) {
   return requestJimiaigo(path, {
     ...options,

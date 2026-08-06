@@ -54,8 +54,8 @@ export function resolveBillingModelName(node, options = {}) {
   }
   
   if (node.type === 'video') {
-    const family = node.videoFamily || 'sora';
-    const model = node.videoModel || (family === 'sora' ? 'sora2-gz-sp' : '');
+    const family = node.videoFamily || 'seedance';
+    const model = node.videoModel || (family === 'sora' ? 'sora2-gz-sp' : family === 'seedance' ? 'seedance-2.0-manxue' : '');
     const resolution = String(node.videoResolution || '720p').toLowerCase();
     const duration = String(node.videoDuration || '8');
 

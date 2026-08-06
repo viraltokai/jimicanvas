@@ -42,10 +42,10 @@ export const CANVAS_BACKGROUND_OPTIONS = [
 export const DEFAULT_VIDEO_URL = '/demo/default-tiktok-ecommerce-9x16.mp4';
 export const DEFAULT_IMAGE_URL = '/demo/default-handsome-american-man.jpg';
 export const DEFAULT_DEMO_IMAGE_RATIO = '3:2';
-export const DEFAULT_VIDEO_FAMILY = 'sora';
-export const DEFAULT_VIDEO_MODEL = 'sora2-gz-sp';
+export const DEFAULT_VIDEO_FAMILY = 'seedance';
+export const DEFAULT_VIDEO_MODEL = 'seedance-2.0-manxue';
 export const DEFAULT_VIDEO_ROUTE = 'route3';
-export const DEFAULT_VIDEO_DURATION = '8';
+export const DEFAULT_VIDEO_DURATION = '5';
 export const DEFAULT_SORA_VIDEO_DURATION = '12';
 export const DEFAULT_VIDEO_ORIENTATION = 'portrait';
 export const DEFAULT_VIDEO_RATIO = '9:16';
@@ -111,6 +111,7 @@ export const VEO_GENERATION_TYPE_OPTIONS = [
   { value: 'reference', label: '参考图' },
 ];
 
+/** 可选视频家族（Sora 是否展示由 admin 线路开关控制） */
 export const VIDEO_FAMILY_OPTIONS = [
   { value: 'sora', label: 'Sora' },
   { value: 'veo', label: 'VEO' },
@@ -492,7 +493,8 @@ export function inferVideoFamily(node = {}) {
   if (isSeedanceManxueModel(model) || model.includes('seedance') || model.includes('doubao')) return 'seedance';
   if (model.includes('veo') || model.startsWith('sc-veo')) return 'veo';
   if (model.includes('omni') || model.includes('gemini')) return 'omni';
-  return 'sora';
+  if (model.includes('sora')) return 'sora';
+  return DEFAULT_VIDEO_FAMILY;
 }
 
 export function getVideoReferenceImageMax(node = {}) {
@@ -512,6 +514,50 @@ export function getVideoFamilyConfig(family = DEFAULT_VIDEO_FAMILY) {
 
 export function getVideoModelOptions(family) {
   return getVideoFamilyConfig(family).models;
+}
+
+export function getVisibleVideoFamilyOptions(soraVisibility) {
+  const showSora = isSoraFamilyVisible(soraVisibility);
+  return VIDEO_FAMILY_OPTIONS.filter((item) => item.value !== 'sora' || showSora);
+}
+
+export function getVisibleSoraModelOptions(soraVisibility) {
+  const visibility = normalizeSoraRouteVisibility(soraVisibility);
+  return (VIDEO_FAMILY_CONFIG.sora?.models || []).filter((model) => {
+    const value = String(model.value || '').toLowerCase();
+    if (value.includes('stable')) return visibility.route3_visible;
+    if (value.includes('gz-sp') || value.includes('-sp')) return visibility.route1_visible;
+    return visibility.route1_visible || visibility.route3_visible;
+  });
+}
+
+export function getVideoModelOptionsForVisibility(family, soraVisibility) {
+  if (family === 'sora') {
+    return getVisibleSoraModelOptions(soraVisibility);
+  }
+  return getVideoModelOptions(family);
+}
+
+export const DEFAULT_SORA_ROUTE_VISIBILITY = {
+  route1_visible: true,
+  route3_visible: true,
+  route4_visible: true,
+  route6_visible: false,
+};
+
+export function normalizeSoraRouteVisibility(raw) {
+  return {
+    route1_visible: raw?.route1_visible ?? DEFAULT_SORA_ROUTE_VISIBILITY.route1_visible,
+    route3_visible: raw?.route3_visible ?? DEFAULT_SORA_ROUTE_VISIBILITY.route3_visible,
+    route4_visible: raw?.route4_visible ?? DEFAULT_SORA_ROUTE_VISIBILITY.route4_visible,
+    route6_visible: raw?.route6_visible ?? DEFAULT_SORA_ROUTE_VISIBILITY.route6_visible,
+  };
+}
+
+/** canvas：Sora 特价/稳定版对应 admin route1 / route3（route4 仅控制 web 端 openai_sora-2） */
+export function isSoraFamilyVisible(soraVisibility) {
+  const visibility = normalizeSoraRouteVisibility(soraVisibility);
+  return visibility.route1_visible || visibility.route3_visible;
 }
 
 export function getVideoResolutionOptions(family, model = '') {
