@@ -1933,20 +1933,24 @@ export function VideoToolbar({
             ) : null}
             {showSeedance25Media ? (
               <div className="seedance-section">
-                <SeedanceMediaPanel
-                  label="参考视频"
-                  icon={Film}
-                  mediaType="video"
-                  items={referenceVideos}
-                  maxCount={SEEDANCE25_REF_VIDEO_MAX}
-                  disabled={isRunning}
-                  isRunning={isRunning}
-                  onPick={() => onOpenAssetLibrary(node.id, 's25-ref-video')}
-                  onRemove={(index) => {
-                    const next = referenceVideos.filter((_, i) => i !== index);
-                    onUpdateNode(node.id, { videoReferenceVideos: next, status: 'idle' });
-                  }}
-                />
+                {SEEDANCE25_REF_VIDEO_MAX > 0 ? (
+                  <SeedanceMediaPanel
+                    label="参考视频"
+                    icon={Film}
+                    mediaType="video"
+                    items={referenceVideos}
+                    maxCount={SEEDANCE25_REF_VIDEO_MAX}
+                    disabled={isRunning}
+                    isRunning={isRunning}
+                    onPick={() => onOpenAssetLibrary(node.id, 's25-ref-video')}
+                    onRemove={(index) => {
+                      const next = referenceVideos.filter((_, i) => i !== index);
+                      onUpdateNode(node.id, { videoReferenceVideos: next, status: 'idle' });
+                    }}
+                  />
+                ) : (
+                  <p className="video-manxue-hint">Seedance 2.5 暂不支持参考视频</p>
+                )}
                 <SeedanceMediaPanel
                   label="参考音频"
                   icon={Headphones}
@@ -2384,20 +2388,24 @@ export function VideoToolbar({
 
       {showSeedance25Media ? (
         <div className="seedance-section">
-          <SeedanceMediaPanel
-            label="参考视频"
-            icon={Film}
-            mediaType="video"
-            items={referenceVideos}
-            maxCount={SEEDANCE25_REF_VIDEO_MAX}
-            disabled={isRunning}
-            isRunning={isRunning}
-            onPick={() => onOpenAssetLibrary(node.id, 's25-ref-video')}
-            onRemove={(index) => {
-              const next = referenceVideos.filter((_, i) => i !== index);
-              onUpdateNode(node.id, { videoReferenceVideos: next, status: 'idle' });
-            }}
-          />
+          {SEEDANCE25_REF_VIDEO_MAX > 0 ? (
+            <SeedanceMediaPanel
+              label="参考视频"
+              icon={Film}
+              mediaType="video"
+              items={referenceVideos}
+              maxCount={SEEDANCE25_REF_VIDEO_MAX}
+              disabled={isRunning}
+              isRunning={isRunning}
+              onPick={() => onOpenAssetLibrary(node.id, 's25-ref-video')}
+              onRemove={(index) => {
+                const next = referenceVideos.filter((_, i) => i !== index);
+                onUpdateNode(node.id, { videoReferenceVideos: next, status: 'idle' });
+              }}
+            />
+          ) : (
+            <p className="video-manxue-hint">Seedance 2.5 暂不支持参考视频</p>
+          )}
           <SeedanceMediaPanel
             label="参考音频"
             icon={Headphones}

@@ -463,7 +463,6 @@ async function createSeedance25Task({
   seedanceInputs = {},
 }) {
   const images = buildReferenceImageUrls(referenceImages).slice(0, 30);
-  const videos = (seedanceInputs.referenceVideos || []).map(pickPublicMediaUrl).filter(Boolean).slice(0, 10);
   const audios = (seedanceInputs.referenceAudios || []).map(pickPublicMediaUrl).filter(Boolean).slice(0, 10);
   const resolution = String(settings.resolution || '480p').toLowerCase() === '720p' ? '720p' : '480p';
   const ratio = ['16:9', '9:16', '1:1'].includes(settings.ratio) ? settings.ratio : '9:16';
@@ -479,7 +478,6 @@ async function createSeedance25Task({
       aspect_ratio: ratio,
       resolution,
       reference_images: images,
-      reference_videos: videos,
       reference_audios: audios,
     },
   });
