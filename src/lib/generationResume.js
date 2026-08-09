@@ -396,6 +396,7 @@ export async function executeVideoGeneration(
     flux3Mode: node.videoFlux3Mode || 't2v',
     flux3GenerateAudio: node.flux3GenerateAudio !== false,
     flux3DraftCacheUrl: node.flux3DraftCacheUrl || '',
+    flux3Keyframes: Array.isArray(node.flux3Keyframes) ? node.flux3Keyframes : [],
   };
   let batch = getGenerationBatch(node, settings.count);
   const isResume = batch.completed > 0 || Boolean(getVideoTaskId(node));

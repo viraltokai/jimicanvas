@@ -503,9 +503,11 @@ async function createFlux3Task({
       ? 'flux-3-i2v-draft'
       : mode === 'flf'
         ? 'flux-3-flf-draft'
-        : mode === 'enhance'
-          ? 'flux-3-enhance'
-          : 'flux-3-draft';
+        : mode === 'keyframes'
+          ? 'flux-3-keyframes-draft'
+          : mode === 'enhance'
+            ? 'flux-3-enhance'
+            : 'flux-3-draft';
   const images = buildReferenceImageUrls(referenceImages);
   const duration = Math.min(20, Math.max(5, Number(settings.duration) || 5));
   const ratio = settings.ratio || '16:9';
@@ -526,6 +528,30 @@ async function createFlux3Task({
   if (mode === 'flf') {
     body.start_image_url = String(veoFrames.firstFrame || '').trim() || undefined;
     body.end_image_url = String(veoFrames.lastFrame || '').trim() || undefined;
+  }
+  if (mode === 'keyframes') {
+    const maxIdx = duration * 24;
+    const keyframes = (Array.isArray(settings.flux3Keyframes) ? settings.flux3Keyframes : [])
+      .slice(0, 10)
+      .map((kf, i, arr) => ({
+        image_url: String(kf?.imageUrl || kf?.image_url || images[i] || '').trim(),
+        frame_index: Number.isFinite(Number(kf?.frameIndex ?? kf?.frame_index))
+          ? Number(kf?.frameIndex ?? kf?.frame_index)
+          : arr.length <= 1
+            ? 0
+            : Math.round((i / (arr.length - 1)) * maxIdx),
+      }))
+      .filter((kf) => kf.image_url);
+    // fallback: use reference images evenly if keyframes not stored
+    if (!keyframes.length && images.length) {
+      images.slice(0, 10).forEach((url, i, arr) => {
+        keyframes.push({
+          image_url: url,
+          frame_index: arr.length <= 1 ? 0 : Math.round((i / (arr.length - 1)) * maxIdx),
+        });
+      });
+    }
+    body.keyframes = keyframes;
   }
   if (mode === 'enhance') {
     body.draft_cache_url = String(settings.flux3DraftCacheUrl || '').trim() || undefined;

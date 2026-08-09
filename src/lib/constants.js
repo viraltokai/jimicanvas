@@ -71,9 +71,11 @@ export const FLUX3_MODE_OPTIONS = [
   { value: 't2v', label: '文生' },
   { value: 'i2v', label: '图生' },
   { value: 'flf', label: '首尾帧' },
+  { value: 'keyframes', label: '关键帧' },
   { value: 'enhance', label: 'Enhance' },
 ];
 export const DEFAULT_FLUX3_MODE = 't2v';
+export const FLUX3_REF_KEYFRAME_MAX = 10;
 export const VIDEO_GENERIC_REFERENCE_MAX = 5;
 /** Gemini Omni 参考图上限 */
 export const OMNI_REFERENCE_IMAGE_MAX = 7;
@@ -526,13 +528,14 @@ export function isFlux3Model(model = '') {
 export function mapFlux3ModeToApiModel(mode = DEFAULT_FLUX3_MODE) {
   if (mode === 'i2v') return 'flux-3-i2v-draft';
   if (mode === 'flf') return 'flux-3-flf-draft';
+  if (mode === 'keyframes') return 'flux-3-keyframes-draft';
   if (mode === 'enhance') return 'flux-3-enhance';
   return FLUX3_MODEL;
 }
 
 export function normalizeFlux3Mode(mode = DEFAULT_FLUX3_MODE) {
   const value = String(mode || '').toLowerCase();
-  if (value === 'i2v' || value === 'flf' || value === 'enhance') return value;
+  if (value === 'i2v' || value === 'flf' || value === 'keyframes' || value === 'enhance') return value;
   return DEFAULT_FLUX3_MODE;
 }
 
@@ -559,7 +562,10 @@ export function getVideoReferenceImageMax(node = {}) {
   if (family === 'seedance') return SEEDANCE_REF_IMAGE_MAX;
   if (family === 'seedance25') return SEEDANCE25_REF_IMAGE_MAX;
   if (family === 'flux3') {
-    return normalizeFlux3Mode(node.videoFlux3Mode) === 'i2v' ? 1 : 0;
+    const mode = normalizeFlux3Mode(node.videoFlux3Mode);
+    if (mode === 'i2v') return 1;
+    if (mode === 'keyframes') return FLUX3_REF_KEYFRAME_MAX;
+    return 0;
   }
   if (family === 'omni') return OMNI_REFERENCE_IMAGE_MAX;
   if (family === 'grok') return getGrokReferenceImageMax(node.videoModel);

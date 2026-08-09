@@ -109,6 +109,7 @@ export function resolveBillingModelName(node, options = {}) {
       const mode = String(node.videoFlux3Mode || options.flux3Mode || 't2v').toLowerCase();
       if (mode === 'i2v') return 'flux-3-i2v-draft';
       if (mode === 'flf') return 'flux-3-flf-draft';
+      if (mode === 'keyframes') return 'flux-3-keyframes-draft';
       if (mode === 'enhance') return 'flux-3-enhance';
       return 'flux-3-draft';
     }

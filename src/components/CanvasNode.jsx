@@ -46,7 +46,6 @@ import {
   isSoraFamilyVisible,
   VIDEO_FAMILY_OPTIONS,
   VEO_GENERATION_TYPE_OPTIONS,
-  FLUX3_MODE_OPTIONS,
   DEFAULT_IMAGE_URL,
   DEFAULT_VIDEO_URL,
   PLACEHOLDER_IMAGE,
@@ -56,6 +55,8 @@ import {
   SEEDANCE_REF_AUDIO_MAX,
   SEEDANCE25_REF_VIDEO_MAX,
   SEEDANCE25_REF_AUDIO_MAX,
+  FLUX3_MODE_OPTIONS,
+  FLUX3_REF_KEYFRAME_MAX,
   getImageReferenceMax,
   AUDIO_VOICE_OPTIONS,
   AUDIO_SPEED_OPTIONS,
@@ -1393,7 +1394,7 @@ export function VideoToolbar({
   const showSeedanceReferenceMedia = isSeedance && !hasSeedanceFrames;
   const showMinimaxFrames = isMinimax;
   const showFlux3Frames = isFlux3 && flux3Mode === 'flf';
-  const showFlux3ReferenceImages = isFlux3 && flux3Mode === 'i2v';
+  const showFlux3ReferenceImages = isFlux3 && (flux3Mode === 'i2v' || flux3Mode === 'keyframes');
   const showGenericReferenceImages = !isVeo && !isSeedance && !isFlux3;
   const showSeedance25Media = isSeedance25;
   const familyOptions = getVisibleVideoFamilyOptions(soraVisibility);
@@ -1777,7 +1778,7 @@ export function VideoToolbar({
           options={FLUX3_MODE_OPTIONS}
           onChange={(value) => {
             const patch = { videoFlux3Mode: value, status: 'idle' };
-            if (value !== 'i2v') patch.referenceImages = [];
+            if (value !== 'i2v' && value !== 'keyframes') patch.referenceImages = [];
             if (value !== 'flf') {
               patch.videoFirstFrame = null;
               patch.videoLastFrame = null;
@@ -1883,14 +1884,18 @@ export function VideoToolbar({
                     (showVeoReferenceImages && resolvedReferences.length >= VEO_REFERENCE_IMAGE_MAX) ||
                     (showSeedanceReferenceImages && resolvedReferences.length >= SEEDANCE_REF_IMAGE_MAX) ||
                     (showGenericReferenceImages && resolvedReferences.length >= genericReferenceMax) ||
-                    (showFlux3ReferenceImages && resolvedReferences.length >= 1)
+                    (showFlux3ReferenceImages &&
+                      resolvedReferences.length >=
+                        (flux3Mode === 'keyframes' ? FLUX3_REF_KEYFRAME_MAX : 1))
                   }
                   title={
                     showVeoReferenceImages
                       ? `从资产库选择参考图（最多 ${VEO_REFERENCE_IMAGE_MAX} 张）`
                       : showSeedanceReferenceImages
                         ? `从满血版素材库选择参考图（最多 ${SEEDANCE_REF_IMAGE_MAX} 张）`
-                        : `从资产库选择参考图（最多 ${genericReferenceMax} 张）`
+                        : showFlux3ReferenceImages
+                          ? `从资产库选择${flux3Mode === 'keyframes' ? '关键帧' : '参考图'}（最多 ${flux3Mode === 'keyframes' ? FLUX3_REF_KEYFRAME_MAX : 1} 张）`
+                          : `从资产库选择参考图（最多 ${genericReferenceMax} 张）`
                   }
                 >
                   <FolderOpen size={14} />
@@ -2108,7 +2113,9 @@ export function VideoToolbar({
   const maxRefImageCount = showVeoReferenceImages
     ? VEO_REFERENCE_IMAGE_MAX
     : showFlux3ReferenceImages
-      ? 1
+      ? flux3Mode === 'keyframes'
+        ? FLUX3_REF_KEYFRAME_MAX
+        : 1
       : genericReferenceMax;
 
   const extraActions = (
@@ -2126,7 +2133,8 @@ export function VideoToolbar({
           disabled={
             isRunning ||
             (showVeoReferenceImages && resolvedReferences.length >= VEO_REFERENCE_IMAGE_MAX) ||
-            (showFlux3ReferenceImages && resolvedReferences.length >= 1) ||
+            (showFlux3ReferenceImages &&
+              resolvedReferences.length >= (flux3Mode === 'keyframes' ? FLUX3_REF_KEYFRAME_MAX : 1)) ||
             (showGenericReferenceImages && resolvedReferences.length >= genericReferenceMax)
           }
           title={
