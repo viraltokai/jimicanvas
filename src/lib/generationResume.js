@@ -379,19 +379,24 @@ export async function executeVideoGeneration(
 ) {
   const promptText = String(node.prompt || '').trim();
   const family = inferVideoFamily(node);
-  const settings = normalizeVideoModelSettings({
-    family,
-    model: node.videoModel,
-    size: node.videoSize,
-    resolution: node.videoResolution,
-    orientation: node.videoOrientation,
-    ratio: node.videoRatio,
-    quality: node.videoQuality,
-    duration: node.videoDuration,
-    generationType: node.videoGenerationType,
-    count: node.videoCount,
-    route: node.videoRoute,
-  });
+  const settings = {
+    ...normalizeVideoModelSettings({
+      family,
+      model: node.videoModel,
+      size: node.videoSize,
+      resolution: node.videoResolution,
+      orientation: node.videoOrientation,
+      ratio: node.videoRatio,
+      quality: node.videoQuality,
+      duration: node.videoDuration,
+      generationType: node.videoGenerationType,
+      count: node.videoCount,
+      route: node.videoRoute,
+    }),
+    flux3Mode: node.videoFlux3Mode || 't2v',
+    flux3GenerateAudio: node.flux3GenerateAudio !== false,
+    flux3DraftCacheUrl: node.flux3DraftCacheUrl || '',
+  };
   let batch = getGenerationBatch(node, settings.count);
   const isResume = batch.completed > 0 || Boolean(getVideoTaskId(node));
   let videos = isResume && Array.isArray(node.videos) ? [...node.videos] : [];
@@ -412,7 +417,7 @@ export async function executeVideoGeneration(
         settings,
         referenceImages: node.referenceImages || [],
         veoFrames:
-          family === 'veo' || family === 'minimax'
+          family === 'veo' || family === 'minimax' || family === 'flux3'
             ? {
                 firstFrame: node.videoFirstFrame,
                 lastFrame: node.videoLastFrame,

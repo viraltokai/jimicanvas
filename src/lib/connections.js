@@ -216,6 +216,9 @@ export function isVideoFrameImageMode(node) {
   if (family === 'veo') {
     return (node?.videoGenerationType || 'frame') === 'frame';
   }
+  if (family === 'flux3') {
+    return String(node?.videoFlux3Mode || 't2v') === 'flf';
+  }
   if (family === 'seedance') {
     const refs = Array.isArray(node?.referenceImages) ? node.referenceImages : [];
     return refs.length === 0;

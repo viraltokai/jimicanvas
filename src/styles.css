@@ -1921,6 +1921,37 @@ button {
   gap: 8px;
 }
 
+.settings-inline-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--node-option-label);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.settings-text-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-text-field-label {
+  color: var(--node-option-label);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.settings-text-field input {
+  width: 100%;
+  border: 1px solid var(--node-option-border, rgba(255, 255, 255, 0.12));
+  border-radius: 10px;
+  background: var(--node-option-bg, rgba(255, 255, 255, 0.04));
+  color: inherit;
+  font-size: 12px;
+  padding: 8px 10px;
+}
+
 .settings-options-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

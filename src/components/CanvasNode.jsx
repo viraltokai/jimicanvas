@@ -46,6 +46,7 @@ import {
   isSoraFamilyVisible,
   VIDEO_FAMILY_OPTIONS,
   VEO_GENERATION_TYPE_OPTIONS,
+  FLUX3_MODE_OPTIONS,
   DEFAULT_IMAGE_URL,
   DEFAULT_VIDEO_URL,
   PLACEHOLDER_IMAGE,
@@ -1379,8 +1380,10 @@ export function VideoToolbar({
   const isVeo = family === 'veo';
   const isSeedance = family === 'seedance';
   const isSeedance25 = family === 'seedance25';
+  const isFlux3 = family === 'flux3';
   const isMinimax = family === 'minimax';
   const veoGenerationType = node.videoGenerationType || 'frame';
+  const flux3Mode = node.videoFlux3Mode || 't2v';
   const showVeoReferenceImages = isVeo && veoGenerationType === 'reference';
   const seedanceReferenceMode = isSeedance && assetReferences.length > 0;
   const showSeedanceReferenceImages = seedanceReferenceMode;
@@ -1389,7 +1392,9 @@ export function VideoToolbar({
   const hasSeedanceReferenceImages = seedanceReferenceMode && resolvedReferences.length > 0;
   const showSeedanceReferenceMedia = isSeedance && !hasSeedanceFrames;
   const showMinimaxFrames = isMinimax;
-  const showGenericReferenceImages = !isVeo && !isSeedance;
+  const showFlux3Frames = isFlux3 && flux3Mode === 'flf';
+  const showFlux3ReferenceImages = isFlux3 && flux3Mode === 'i2v';
+  const showGenericReferenceImages = !isVeo && !isSeedance && !isFlux3;
   const showSeedance25Media = isSeedance25;
   const familyOptions = getVisibleVideoFamilyOptions(soraVisibility);
   const modelOptions = getVideoModelOptionsForVisibility(family, soraVisibility);
@@ -1529,7 +1534,13 @@ export function VideoToolbar({
       patch.videoGenerationType = undefined;
     }
 
-    if (nextFamily !== 'veo' && nextFamily !== 'seedance' && nextFamily !== 'minimax') {
+    if (nextFamily === 'flux3') {
+      patch.videoFlux3Mode = node.videoFlux3Mode || 't2v';
+      patch.flux3GenerateAudio = node.flux3GenerateAudio !== false;
+      patch.flux3DraftCacheUrl = node.flux3DraftCacheUrl || '';
+    }
+
+    if (nextFamily !== 'veo' && nextFamily !== 'seedance' && nextFamily !== 'minimax' && nextFamily !== 'flux3') {
       patch.videoFirstFrame = null;
       patch.videoLastFrame = null;
     }
@@ -1759,17 +1770,59 @@ export function VideoToolbar({
           onChange={applyVeoGenerationTypeChange}
         />
       ) : null}
+      {isFlux3 ? (
+        <OptionSegment
+          title="生成模式"
+          value={flux3Mode}
+          options={FLUX3_MODE_OPTIONS}
+          onChange={(value) => {
+            const patch = { videoFlux3Mode: value, status: 'idle' };
+            if (value !== 'i2v') patch.referenceImages = [];
+            if (value !== 'flf') {
+              patch.videoFirstFrame = null;
+              patch.videoLastFrame = null;
+            }
+            if (value !== 'enhance') patch.flux3DraftCacheUrl = node.flux3DraftCacheUrl || '';
+            onUpdateNode(node.id, patch);
+          }}
+        />
+      ) : null}
       {shareRatioDurationRow ? (
         <div className="settings-options-row">
-          {ratioSegment}
+          {flux3Mode === 'enhance' && isFlux3 ? null : ratioSegment}
           {durationSegment}
         </div>
       ) : (
         <>
-          {ratioSegment}
+          {flux3Mode === 'enhance' && isFlux3 ? null : ratioSegment}
           {durationSegment}
         </>
       )}
+      {isFlux3 && flux3Mode !== 'enhance' ? (
+        <label className="settings-inline-toggle">
+          <input
+            type="checkbox"
+            checked={node.flux3GenerateAudio !== false}
+            onChange={(event) =>
+              onUpdateNode(node.id, { flux3GenerateAudio: event.target.checked, status: 'idle' })
+            }
+          />
+          <span>生成音频</span>
+        </label>
+      ) : null}
+      {isFlux3 && flux3Mode === 'enhance' ? (
+        <div className="settings-text-field">
+          <span className="settings-text-field-label">draft_cache_url</span>
+          <input
+            type="text"
+            value={node.flux3DraftCacheUrl || ''}
+            placeholder="草稿任务返回的 draft_cache_url"
+            onChange={(event) =>
+              onUpdateNode(node.id, { flux3DraftCacheUrl: event.target.value, status: 'idle' })
+            }
+          />
+        </div>
+      ) : null}
     </div>
   );
 
@@ -1789,7 +1842,7 @@ export function VideoToolbar({
       >
         <div className="modal-two-columns">
           <div className="modal-left-column">
-            {showVeoReferenceImages || showSeedanceReferenceImages || showGenericReferenceImages ? (
+            {showVeoReferenceImages || showSeedanceReferenceImages || showGenericReferenceImages || showFlux3ReferenceImages ? (
               <div
                 className={`image-reference-row image-reference-row-top ${showSeedanceReferenceImages ? 'seedance-reference-row' : ''}`}
               >
@@ -1829,7 +1882,8 @@ export function VideoToolbar({
                     isRunning ||
                     (showVeoReferenceImages && resolvedReferences.length >= VEO_REFERENCE_IMAGE_MAX) ||
                     (showSeedanceReferenceImages && resolvedReferences.length >= SEEDANCE_REF_IMAGE_MAX) ||
-                    (showGenericReferenceImages && resolvedReferences.length >= genericReferenceMax)
+                    (showGenericReferenceImages && resolvedReferences.length >= genericReferenceMax) ||
+                    (showFlux3ReferenceImages && resolvedReferences.length >= 1)
                   }
                   title={
                     showVeoReferenceImages
@@ -1844,7 +1898,7 @@ export function VideoToolbar({
                 </button>
               </div>
             ) : null}
-            {showVeoReferenceImages || showSeedanceReferenceImages || showGenericReferenceImages ? (
+            {showVeoReferenceImages || showSeedanceReferenceImages || showGenericReferenceImages || showFlux3ReferenceImages ? (
               <ReferencePromptInput
                 value={node.prompt || ''}
                 onChange={(prompt) => onUpdateNode(node.id, { prompt, status: 'idle' })}
@@ -1911,7 +1965,7 @@ export function VideoToolbar({
                 />
               </div>
             ) : null}
-            {showMinimaxFrames ? (
+            {showMinimaxFrames || showFlux3Frames ? (
               <div className="veo-frame-row">
                 <VeoFrameSlot
                   label="首帧"
@@ -2050,8 +2104,12 @@ export function VideoToolbar({
   const settingsContent = activePopover === 'model' ? videoModelPanels : videoParamPanels;
 
 
-  const showRefImageBtn = showVeoReferenceImages || showGenericReferenceImages;
-  const maxRefImageCount = showVeoReferenceImages ? VEO_REFERENCE_IMAGE_MAX : genericReferenceMax;
+  const showRefImageBtn = showVeoReferenceImages || showGenericReferenceImages || showFlux3ReferenceImages;
+  const maxRefImageCount = showVeoReferenceImages
+    ? VEO_REFERENCE_IMAGE_MAX
+    : showFlux3ReferenceImages
+      ? 1
+      : genericReferenceMax;
 
   const extraActions = (
     <>
@@ -2068,12 +2126,13 @@ export function VideoToolbar({
           disabled={
             isRunning ||
             (showVeoReferenceImages && resolvedReferences.length >= VEO_REFERENCE_IMAGE_MAX) ||
+            (showFlux3ReferenceImages && resolvedReferences.length >= 1) ||
             (showGenericReferenceImages && resolvedReferences.length >= genericReferenceMax)
           }
           title={
             showVeoReferenceImages
               ? `从资产库选择参考图（最多 ${VEO_REFERENCE_IMAGE_MAX} 张）`
-              : `从资产库选择参考图（最多 ${genericReferenceMax} 张）`
+              : `从资产库选择参考图（最多 ${maxRefImageCount} 张）`
           }
         >
           <FolderOpen size={14} />
@@ -2190,7 +2249,7 @@ export function VideoToolbar({
               onClear={() => onUpdateNode(node.id, { referenceImages: [] })}
             />
           </div>
-        ) : showGenericReferenceImages ? (
+        ) : showGenericReferenceImages || showFlux3ReferenceImages ? (
           <div className="image-reference-row image-reference-row-top">
             <span className="image-reference-label">
               {requiresGrokReference ? '参考图（必填 1 张）' : '参考图'}
@@ -2365,7 +2424,7 @@ export function VideoToolbar({
           />
         </div>
       ) : null}
-      {showMinimaxFrames ? (
+      {showMinimaxFrames || showFlux3Frames ? (
         <div className="veo-frame-row">
           <VeoFrameSlot
             label="首帧"

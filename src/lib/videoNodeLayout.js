@@ -24,7 +24,9 @@ export function resolveVideoAspectRatio(node = {}) {
     };
   }
 
-  return parseRatioValue(node.videoRatio || DEFAULT_VIDEO_RATIO);
+  return parseRatioValue(
+    node.videoRatio === 'auto' ? DEFAULT_VIDEO_RATIO : node.videoRatio || DEFAULT_VIDEO_RATIO
+  );
 }
 
 export function buildVideoNodeLayoutPatch(node = {}, aspectOverride = null) {

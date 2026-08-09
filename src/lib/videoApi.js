@@ -490,6 +490,61 @@ async function createSeedance25Task({
   return { taskId: String(taskId), provider: 'seedance-2.5' };
 }
 
+async function createFlux3Task({
+  token,
+  prompt,
+  settings,
+  referenceImages,
+  veoFrames = {},
+}) {
+  const mode = String(settings.flux3Mode || 't2v').toLowerCase();
+  const model =
+    mode === 'i2v'
+      ? 'flux-3-i2v-draft'
+      : mode === 'flf'
+        ? 'flux-3-flf-draft'
+        : mode === 'enhance'
+          ? 'flux-3-enhance'
+          : 'flux-3-draft';
+  const images = buildReferenceImageUrls(referenceImages);
+  const duration = Math.min(20, Math.max(5, Number(settings.duration) || 5));
+  const ratio = settings.ratio || '16:9';
+  const generateAudio = settings.flux3GenerateAudio !== false;
+
+  const body = {
+    model,
+    duration,
+    aspect_ratio: ratio,
+  };
+  if (mode !== 'enhance') {
+    body.prompt = prompt;
+    body.generate_audio = generateAudio;
+  }
+  if (mode === 'i2v') {
+    body.image_url = images[0] || undefined;
+  }
+  if (mode === 'flf') {
+    body.start_image_url = String(veoFrames.firstFrame || '').trim() || undefined;
+    body.end_image_url = String(veoFrames.lastFrame || '').trim() || undefined;
+  }
+  if (mode === 'enhance') {
+    body.draft_cache_url = String(settings.flux3DraftCacheUrl || '').trim() || undefined;
+  }
+
+  const data = await requestJson('/api/video/flux3/videos', {
+    token,
+    method: 'POST',
+    body,
+  });
+
+  const taskId = extractTaskId(data) || data?.task_id;
+  if (!taskId) {
+    throw new Error('Flux 3 任务创建成功，但未返回任务 ID');
+  }
+
+  return { taskId: String(taskId), provider: 'flux3' };
+}
+
 async function createSeedance933Task({
   token,
   prompt,
@@ -554,6 +609,8 @@ export async function createVideoGenerationTask({
       return createSeedanceManxueTask({ token, prompt, settings, referenceImages, seedanceInputs });
     case 'seedance25':
       return createSeedance25Task({ token, prompt, settings, referenceImages, seedanceInputs });
+    case 'flux3':
+      return createFlux3Task({ token, prompt, settings, referenceImages, veoFrames });
     case 'grok':
       return createGrokTask({ token, prompt, settings, referenceImages });
     case 'minimax':

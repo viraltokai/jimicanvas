@@ -66,6 +66,14 @@ export const SEEDANCE25_REF_IMAGE_MAX = 30;
 export const SEEDANCE25_REF_VIDEO_MAX = 0;
 export const SEEDANCE25_REF_AUDIO_MAX = 10;
 export const SEEDANCE25_MODEL = 'seedance-2.5';
+export const FLUX3_MODEL = 'flux-3-draft';
+export const FLUX3_MODE_OPTIONS = [
+  { value: 't2v', label: '文生' },
+  { value: 'i2v', label: '图生' },
+  { value: 'flf', label: '首尾帧' },
+  { value: 'enhance', label: 'Enhance' },
+];
+export const DEFAULT_FLUX3_MODE = 't2v';
 export const VIDEO_GENERIC_REFERENCE_MAX = 5;
 /** Gemini Omni 参考图上限 */
 export const OMNI_REFERENCE_IMAGE_MAX = 7;
@@ -118,6 +126,7 @@ export const VIDEO_FAMILY_OPTIONS = [
   { value: 'omni', label: 'Omni' },
   { value: 'seedance', label: 'Seedance' },
   { value: 'seedance25', label: 'Seedance 2.5' },
+  { value: 'flux3', label: 'Flux 3' },
   { value: 'grok', label: 'Grok' },
   { value: 'minimax', label: 'MiniMax H3' },
 ];
@@ -273,6 +282,29 @@ export const VIDEO_FAMILY_CONFIG = {
     defaultOrientation: 'portrait',
     maxCount: 1,
     resolutionKey: 'resolution',
+    ratioKey: 'ratio',
+  },
+  flux3: {
+    provider: 'flux3',
+    models: [{ value: FLUX3_MODEL, label: 'Flux 3' }],
+    ratios: [
+      { value: 'auto', label: 'auto' },
+      { value: '21:9', label: '21:9' },
+      { value: '2:1', label: '2:1' },
+      { value: '16:9', label: '16:9' },
+      { value: '4:3', label: '4:3' },
+      { value: '1:1', label: '1:1' },
+      { value: '3:4', label: '3:4' },
+      { value: '9:16', label: '9:16' },
+    ],
+    durations: Array.from({ length: 16 }, (_, i) => {
+      const value = String(i + 5);
+      return { value, label: `${value} 秒` };
+    }),
+    defaultDuration: '5',
+    defaultOrientation: 'landscape',
+    maxCount: 1,
+    resolutionKey: null,
     ratioKey: 'ratio',
   },
   grok: {
@@ -481,12 +513,36 @@ export function buildSeedance25BillingModel(resolution = '480p') {
   return `${SEEDANCE25_MODEL}-${res}`;
 }
 
+export function isFlux3Model(model = '') {
+  const value = String(model).toLowerCase().replace(/_/g, '-');
+  return (
+    value === 'flux3' ||
+    value.startsWith('flux-3') ||
+    value.startsWith('flux3-') ||
+    value.includes('flux-3')
+  );
+}
+
+export function mapFlux3ModeToApiModel(mode = DEFAULT_FLUX3_MODE) {
+  if (mode === 'i2v') return 'flux-3-i2v-draft';
+  if (mode === 'flf') return 'flux-3-flf-draft';
+  if (mode === 'enhance') return 'flux-3-enhance';
+  return FLUX3_MODEL;
+}
+
+export function normalizeFlux3Mode(mode = DEFAULT_FLUX3_MODE) {
+  const value = String(mode || '').toLowerCase();
+  if (value === 'i2v' || value === 'flf' || value === 'enhance') return value;
+  return DEFAULT_FLUX3_MODE;
+}
+
 export function inferVideoFamily(node = {}) {
   if (node.videoFamily && VIDEO_FAMILY_CONFIG[node.videoFamily]) {
     return node.videoFamily;
   }
 
   const model = String(node.videoModel || '').toLowerCase();
+  if (isFlux3Model(model)) return 'flux3';
   if (model.includes('minimax') || model.includes('hailuo') || isMiniMaxH3Model(model)) return 'minimax';
   if (model.includes('grok')) return 'grok';
   if (isSeedance25Model(model)) return 'seedance25';
@@ -502,6 +558,9 @@ export function getVideoReferenceImageMax(node = {}) {
   if (family === 'veo') return VEO_REFERENCE_IMAGE_MAX;
   if (family === 'seedance') return SEEDANCE_REF_IMAGE_MAX;
   if (family === 'seedance25') return SEEDANCE25_REF_IMAGE_MAX;
+  if (family === 'flux3') {
+    return normalizeFlux3Mode(node.videoFlux3Mode) === 'i2v' ? 1 : 0;
+  }
   if (family === 'omni') return OMNI_REFERENCE_IMAGE_MAX;
   if (family === 'grok') return getGrokReferenceImageMax(node.videoModel);
   if (family === 'minimax') return MINIMAX_REFERENCE_IMAGE_MAX;
@@ -562,7 +621,7 @@ export function isSoraFamilyVisible(soraVisibility) {
 
 export function getVideoResolutionOptions(family, model = '') {
   const config = getVideoFamilyConfig(family);
-  if (family === 'sora' || family === 'minimax') {
+  if (family === 'sora' || family === 'minimax' || family === 'flux3') {
     return [];
   }
   if (family === 'seedance' && isSeedanceManxueModel(model)) {
@@ -668,8 +727,8 @@ export function normalizeVideoModelSettings({
   let normalizedResolution = resolution;
   if (family === 'sora') {
     normalizedResolution = defaultSoraSize(normalizedRatio);
-  } else if (family === 'minimax') {
-    // MiniMax H3 用 size（由比例映射），不走 resolution 列表
+  } else if (family === 'minimax' || family === 'flux3') {
+    // MiniMax H3 / Flux 3 不走 resolution 列表
     normalizedResolution = undefined;
   } else if (family === 'seedance' && isSeedanceManxueModel(normalizedModel)) {
     const manxueResolutionFromModel = isManxueSeedance && model !== SEEDANCE_MANXUE_MODEL
