@@ -89,13 +89,23 @@ export async function fetchPublicRoles() {
 
 export function parseUserPayment(payment) {
   const jimicoin = parseFloat(payment?.jimicoin ?? 0) || 0;
+  const subscriptionCoin = parseFloat(payment?.subscription_coin ?? payment?.subscriptionCoin ?? 0) || 0;
+  const totalCoin =
+    parseFloat(payment?.total_coin ?? payment?.totalCoin ?? jimicoin + subscriptionCoin) || 0;
   const usedCoin = parseFloat(payment?.used_coin ?? payment?.usedCoin ?? 0) || 0;
-  const remaining = Math.max(jimicoin - usedCoin, 0);
+  // 优先后端 available_coin（含过期赠送冲销），与 admin / web 一致
+  const availableFromApi = payment?.available_coin ?? payment?.availableCoin;
+  const remaining =
+    availableFromApi !== undefined && availableFromApi !== null && availableFromApi !== ''
+      ? Math.max(0, parseFloat(String(availableFromApi)) || 0)
+      : Math.max(0, totalCoin - usedCoin);
   const percentage =
-    jimicoin > 0 ? Math.min(100, Math.max(0, (remaining / jimicoin) * 100)) : 0;
+    totalCoin > 0 ? Math.min(100, Math.max(0, (remaining / totalCoin) * 100)) : 0;
 
   return {
     jimicoin,
+    subscriptionCoin,
+    totalCoin,
     usedCoin,
     remaining,
     percentage: Math.round(percentage),

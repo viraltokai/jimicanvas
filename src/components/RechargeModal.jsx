@@ -6,7 +6,7 @@ import {
   getChargeList,
   redeemCode,
 } from '../lib/chargeApi';
-import { formatBalanceAmount } from '../lib/userApi';
+import { formatBalanceAmount, parseUserPayment } from '../lib/userApi';
 import {
   baseCoinFromPrice,
   baseCoinFromUSD,
@@ -59,9 +59,9 @@ export function RechargeModal({ isOpen, onClose, onSuccess, user }) {
   );
 
   const availableBalance = useMemo(() => {
-    const totalCoin = Number(user?.payment?.jimicoin || user?.payment?.balance || 0);
-    const usedCoin = Number(user?.payment?.used_coin || user?.payment?.used_balance || 0);
-    return Math.max(0, totalCoin - usedCoin).toFixed(4);
+    // user 可能是完整 profile（含 payment），或已 parse 过的扁平对象
+    const payment = user?.payment || user;
+    return parseUserPayment(payment).remaining.toFixed(4);
   }, [user]);
 
   const paymentOptions = [
