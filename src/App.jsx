@@ -94,7 +94,8 @@ import {
 import { getOrRequestToken, getStoredChatToken, runChatCompletion } from './lib/chatApi';
 import { sseManager } from './lib/sseManager';
 import { isBackendInCooldown } from './lib/jimiaigoApi';
-import { fetchUserInfo, fetchPricingList } from './lib/userApi';
+import { fetchUserInfo, fetchPricingList, fetchPricingStatus } from './lib/userApi';
+import { updateModelActiveMap } from './lib/pricingStatus';
 import { calculateEstimatedCost } from './lib/pricing';
 import { fetchSiteConfig, getDefaultSiteSettings } from './lib/siteApi';
 import {
@@ -349,7 +350,14 @@ function App() {
         profile: info.profile || null,
       });
       try {
-        const pricing = await fetchPricingList(token);
+        const [pricing, status] = await Promise.all([
+          fetchPricingList(token),
+          fetchPricingStatus(token).catch((err) => {
+            console.warn('Failed to fetch pricing status:', err);
+            return null;
+          }),
+        ]);
+        if (Array.isArray(status)) updateModelActiveMap(status);
         setPricingList(pricing);
       } catch (err) {
         console.warn('Failed to fetch pricing list:', err);

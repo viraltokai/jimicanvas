@@ -35,6 +35,7 @@ import {
   getVideoReferenceImageMax,
   grokRequiresReferenceImage,
   IMAGE_MODEL_OPTIONS,
+  getVisibleImageModelOptions,
   getImageRatioOptions,
   getImageResolutionOptions,
   getImageQualityOptions,
@@ -2590,7 +2591,8 @@ export function ImageToolbar({
   const isPromptEmpty = !String(node.prompt || '').trim() && !hasTextInput;
   const assetReferences = Array.isArray(node.referenceImages) ? node.referenceImages : [];
   const resolvedReferences = mergeImageReferenceImages(node, imageInputLinks);
-  const model = node.imageModel || IMAGE_MODEL_OPTIONS[0].value;
+  const modelOptions = getVisibleImageModelOptions(node.imageModel);
+  const model = node.imageModel || modelOptions[0]?.value || IMAGE_MODEL_OPTIONS[0].value;
   const maxReferenceCount = getImageReferenceMax(model);
   const resolutionOptions = getImageResolutionOptions(model);
   const ratioOptions = getImageRatioOptions(model);
@@ -2624,6 +2626,7 @@ export function ImageToolbar({
   }
 
   const modelLabel =
+    modelOptions.find((option) => option.value === model)?.label ||
     IMAGE_MODEL_OPTIONS.find((option) => option.value === model)?.label ||
     model.replace(/^gpt-image-/, 'GPT-').toUpperCase();
   const summaryParts = [
@@ -2639,7 +2642,7 @@ export function ImageToolbar({
       <OptionSegment
         title="模型"
         value={model}
-        options={IMAGE_MODEL_OPTIONS}
+        options={modelOptions}
         onChange={(value) => {
           const nextSettings = normalizeImageModelSettings({
             model: value,

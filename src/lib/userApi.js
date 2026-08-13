@@ -186,11 +186,27 @@ export async function fetchUserInfo(token) {
   };
 }
 
+function normalizePricingPayload(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.list)) return data.list;
+  return [];
+}
+
 export async function fetchPricingList(token) {
-  return requestJimiaigo('/api/pricing/list', {
+  const data = await requestJimiaigo('/api/pricing/list', {
     token,
     method: 'GET',
     fallback: '获取价格配置失败',
   });
+  return normalizePricingPayload(data);
+}
+
+export async function fetchPricingStatus(token) {
+  const data = await requestJimiaigo('/api/pricing/status', {
+    token,
+    method: 'GET',
+    fallback: '获取模型启用状态失败',
+  });
+  return Array.isArray(data) ? data : [];
 }
 

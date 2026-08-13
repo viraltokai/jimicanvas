@@ -1,3 +1,5 @@
+import { filterActiveResolutions, isPricedModelActive, isProductPricingActive } from './pricingStatus';
+
 /** 画布有改动后，延迟多久再上传到云端（防抖，减少频繁保存） */
 export const CLOUD_SYNC_DEBOUNCE_MS = 3000;
 export const STORAGE_KEY = 'jimicanvas.documents.v1';
@@ -892,7 +894,18 @@ export function getImageModelLimits(model) {
 
 export function getImageResolutionOptions(model) {
   const allowed = new Set(getImageModelLimits(model).resolutions || []);
-  return IMAGE_RESOLUTION_OPTIONS.filter((option) => allowed.has(option.value));
+  const options = IMAGE_RESOLUTION_OPTIONS.filter((option) => allowed.has(option.value));
+  return filterActiveResolutions(model, options, false);
+}
+
+export function getVisibleImageModelOptions(currentModel = '') {
+  const visible = IMAGE_MODEL_OPTIONS.filter((option) => isProductPricingActive(option.value));
+  const current = String(currentModel || '').trim();
+  if (current && !visible.some((option) => option.value === current)) {
+    const selected = IMAGE_MODEL_OPTIONS.find((option) => option.value === current);
+    if (selected) return [selected, ...visible];
+  }
+  return visible.length ? visible : IMAGE_MODEL_OPTIONS;
 }
 
 export function getImageRatioOptions(model) {
@@ -915,7 +928,12 @@ export function getImageQualityOptions(model) {
   const allowed = getImageModelLimits(model).qualities;
   if (!allowed) return [];
   const allowedSet = new Set(allowed);
-  return IMAGE_QUALITY_OPTIONS.filter((option) => allowedSet.has(option.value));
+  return IMAGE_QUALITY_OPTIONS.filter((option) => {
+    if (!allowedSet.has(option.value)) return false;
+    if (model !== 'gpt-image-1.5') return true;
+    if (option.value === 'auto') return isPricedModelActive('gpt-image-1.5');
+    return isPricedModelActive(`gpt-image-1.5-${option.value}`);
+  });
 }
 
 export function normalizeImageModelSettings({
