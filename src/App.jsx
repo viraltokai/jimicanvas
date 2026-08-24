@@ -46,6 +46,7 @@ import {
   SEEDANCE_REF_AUDIO_MAX,
   SEEDANCE25_REF_VIDEO_MAX,
   SEEDANCE25_REF_AUDIO_MAX,
+  SEEDANCE25_GZ_REF_VIDEO_MAX,
   VIDEO_GENERIC_REFERENCE_MAX,
   getImageReferenceMax,
 } from './lib/constants';
@@ -2623,10 +2624,12 @@ function App() {
     }
     if (pickMode === 's25-ref-video') {
       const currentCount = Array.isArray(node?.videoReferenceVideos) ? node.videoReferenceVideos.length : 0;
+      const videoMax =
+        inferVideoFamily(node) === 'seedance25gz' ? SEEDANCE25_GZ_REF_VIDEO_MAX : SEEDANCE25_REF_VIDEO_MAX;
       return {
-        maxCount: Math.max(1, SEEDANCE25_REF_VIDEO_MAX - currentCount),
+        maxCount: Math.max(1, videoMax - currentCount),
         title: '资产库',
-        subtitle: `选择参考视频（最多 ${SEEDANCE25_REF_VIDEO_MAX} 个）`,
+        subtitle: `选择参考视频（最多 ${videoMax} 个）`,
       };
     }
     if (pickMode === 's25-ref-audio') {
@@ -2814,9 +2817,11 @@ function App() {
     }
     if (pickMode === 's25-ref-video') {
       const current = Array.isArray(node.videoReferenceVideos) ? node.videoReferenceVideos : [];
+      const videoMax =
+        inferVideoFamily(node) === 'seedance25gz' ? SEEDANCE25_GZ_REF_VIDEO_MAX : SEEDANCE25_REF_VIDEO_MAX;
       return {
         ...node,
-        videoReferenceVideos: [...current, ...normalized].slice(0, SEEDANCE25_REF_VIDEO_MAX),
+        videoReferenceVideos: [...current, ...normalized].slice(0, Math.max(videoMax, 1)),
         status: 'idle',
       };
     }

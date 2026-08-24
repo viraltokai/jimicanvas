@@ -105,6 +105,11 @@ export function resolveBillingModelName(node, options = {}) {
     if (family === 'seedance25') {
       return `seedance-2.5-${resolution === '720p' ? '720p' : '480p'}`;
     }
+    if (family === 'seedance25gz') {
+      const hasVideoRefs = Boolean(options.hasVideoRefs) || (Array.isArray(node.videoReferenceVideos) && node.videoReferenceVideos.length > 0);
+      const res = resolution === '480p' ? '480p' : '720p';
+      return hasVideoRefs ? `seedance2.5-gz-video-${res}` : `seedance2.5-gz-${res}`;
+    }
     if (family === 'flux3') {
       const mode = String(node.videoFlux3Mode || options.flux3Mode || 't2v').toLowerCase();
       if (mode === 'i2v') return 'flux-3-i2v-draft';
@@ -147,7 +152,7 @@ export function calculateEstimatedCost(pricingList, node, profile, options = {})
   const duration = Number(options.duration || (node.type === 'video' ? node.videoDuration : 0)) || 0;
 
   // Seedance 2.5 / Grok / Flux 3 等按秒模型：强制单价 × 时长（不依赖 pricing_type 配置）
-  if (family === 'seedance25' || family === 'grok' || family === 'flux3') {
+  if (family === 'seedance25' || family === 'seedance25gz' || family === 'grok' || family === 'flux3') {
     if (duration > 0) {
       return Math.round(unitPrice * duration * 10000) / 10000;
     }

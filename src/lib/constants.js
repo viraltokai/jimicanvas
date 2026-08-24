@@ -68,6 +68,8 @@ export const SEEDANCE25_REF_IMAGE_MAX = 30;
 export const SEEDANCE25_REF_VIDEO_MAX = 0;
 export const SEEDANCE25_REF_AUDIO_MAX = 10;
 export const SEEDANCE25_MODEL = 'seedance-2.5';
+export const SEEDANCE25_GZ_MODEL = 'seedance2.5-gz';
+export const SEEDANCE25_GZ_REF_VIDEO_MAX = 10;
 export const FLUX3_MODEL = 'flux-3-draft';
 export const FLUX3_MODE_OPTIONS = [
   { value: 't2v', label: '文生' },
@@ -130,6 +132,7 @@ export const VIDEO_FAMILY_OPTIONS = [
   { value: 'omni', label: 'Omni' },
   { value: 'seedance', label: 'Seedance' },
   { value: 'seedance25', label: 'Seedance 2.5' },
+  { value: 'seedance25gz', label: 'Seedance 2.5 官方' },
   { value: 'flux3', label: 'Flux 3' },
   { value: 'grok', label: 'Grok' },
   { value: 'minimax', label: 'MiniMax H3' },
@@ -283,6 +286,32 @@ export const VIDEO_FAMILY_CONFIG = {
       return { value, label: `${value} 秒` };
     }),
     defaultDuration: '4',
+    defaultOrientation: 'portrait',
+    maxCount: 1,
+    resolutionKey: 'resolution',
+    ratioKey: 'ratio',
+  },
+  seedance25gz: {
+    provider: 'seedance2.5-gz',
+    models: [{ value: SEEDANCE25_GZ_MODEL, label: 'Seedance 2.5 官方' }],
+    resolutions: [
+      { value: '720p', label: '720p' },
+      { value: '480p', label: '480p' },
+    ],
+    ratios: [
+      { value: 'adaptive', label: '自适应' },
+      { value: '16:9', label: '16:9' },
+      { value: '9:16', label: '9:16' },
+      { value: '1:1', label: '1:1' },
+      { value: '4:3', label: '4:3' },
+      { value: '3:4', label: '3:4' },
+      { value: '21:9', label: '21:9' },
+    ],
+    durations: Array.from({ length: 27 }, (_, i) => {
+      const value = String(i + 4);
+      return { value, label: `${value} 秒` };
+    }),
+    defaultDuration: '5',
     defaultOrientation: 'portrait',
     maxCount: 1,
     resolutionKey: 'resolution',
@@ -501,7 +530,19 @@ export function normalizeSeedanceUiModel(model = '') {
   return model;
 }
 
+export function isSeedance25GzModel(model = '') {
+  const value = String(model).toLowerCase().replace(/_/g, '-');
+  return (
+    value === SEEDANCE25_GZ_MODEL ||
+    value === 'seedance25gz' ||
+    value === 'seedance25-gz' ||
+    value.includes('seedance2.5-gz') ||
+    value.includes('seedance-2.5-gz')
+  );
+}
+
 export function isSeedance25Model(model = '') {
+  if (isSeedance25GzModel(model)) return false;
   const value = String(model).toLowerCase().replace(/_/g, '-');
   return (
     value === SEEDANCE25_MODEL ||
@@ -515,6 +556,11 @@ export function isSeedance25Model(model = '') {
 export function buildSeedance25BillingModel(resolution = '480p') {
   const res = String(resolution).toLowerCase() === '720p' ? '720p' : '480p';
   return `${SEEDANCE25_MODEL}-${res}`;
+}
+
+export function buildSeedance25GzBillingModel(resolution = '720p', hasVideoRefs = false) {
+  const res = String(resolution).toLowerCase() === '480p' ? '480p' : '720p';
+  return hasVideoRefs ? `seedance2.5-gz-video-${res}` : `seedance2.5-gz-${res}`;
 }
 
 export function isFlux3Model(model = '') {
@@ -550,6 +596,7 @@ export function inferVideoFamily(node = {}) {
   if (isFlux3Model(model)) return 'flux3';
   if (model.includes('minimax') || model.includes('hailuo') || isMiniMaxH3Model(model)) return 'minimax';
   if (model.includes('grok')) return 'grok';
+  if (isSeedance25GzModel(model)) return 'seedance25gz';
   if (isSeedance25Model(model)) return 'seedance25';
   if (isSeedanceManxueModel(model) || model.includes('seedance') || model.includes('doubao')) return 'seedance';
   if (model.includes('veo') || model.startsWith('sc-veo')) return 'veo';
@@ -562,7 +609,7 @@ export function getVideoReferenceImageMax(node = {}) {
   const family = inferVideoFamily(node);
   if (family === 'veo') return VEO_REFERENCE_IMAGE_MAX;
   if (family === 'seedance') return SEEDANCE_REF_IMAGE_MAX;
-  if (family === 'seedance25') return SEEDANCE25_REF_IMAGE_MAX;
+  if (family === 'seedance25' || family === 'seedance25gz') return SEEDANCE25_REF_IMAGE_MAX;
   if (family === 'flux3') {
     const mode = normalizeFlux3Mode(node.videoFlux3Mode);
     if (mode === 'i2v') return 1;

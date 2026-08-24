@@ -425,10 +425,10 @@ export async function executeVideoGeneration(
               }
             : {},
         seedanceInputs:
-          family === 'seedance' || family === 'seedance25'
+          family === 'seedance' || family === 'seedance25' || family === 'seedance25gz'
             ? {
-                firstFrame: family === 'seedance' ? node.videoFirstFrame : undefined,
-                lastFrame: family === 'seedance' ? node.videoLastFrame : undefined,
+                firstFrame: family === 'seedance' || family === 'seedance25gz' ? node.videoFirstFrame : undefined,
+                lastFrame: family === 'seedance' || family === 'seedance25gz' ? node.videoLastFrame : undefined,
                 referenceVideos: node.videoReferenceVideos || [],
                 referenceAudios: node.videoReferenceAudios || [],
                 videoRefDuration: (node.videoReferenceVideos || []).reduce(

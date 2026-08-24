@@ -490,6 +490,54 @@ async function createSeedance25Task({
   return { taskId: String(taskId), provider: 'seedance-2.5' };
 }
 
+async function createSeedance25GzTask({
+  token,
+  prompt,
+  settings,
+  referenceImages,
+  seedanceInputs = {},
+}) {
+  const hasFrames = Boolean(seedanceInputs.firstFrame || seedanceInputs.lastFrame);
+  const images = hasFrames ? [] : buildReferenceImageUrls(referenceImages).slice(0, 30);
+  const videos = (seedanceInputs.referenceVideos || []).map(pickPublicMediaUrl).filter(Boolean).slice(0, 10);
+  const audios = (seedanceInputs.referenceAudios || []).map(pickPublicMediaUrl).filter(Boolean).slice(0, 10);
+  const resolution = String(settings.resolution || '720p').toLowerCase() === '480p' ? '480p' : '720p';
+  const allowedRatios = ['adaptive', '16:9', '9:16', '1:1', '4:3', '3:4', '21:9'];
+  const ratio = hasFrames
+    ? 'adaptive'
+    : allowedRatios.includes(settings.ratio)
+      ? settings.ratio
+      : 'adaptive';
+  const duration = Math.min(30, Math.max(4, Number(settings.duration) || 5));
+  const firstImage = pickPublicMediaUrl(seedanceInputs.firstFrame) || String(seedanceInputs.firstFrame || '').trim();
+  const lastImage = pickPublicMediaUrl(seedanceInputs.lastFrame) || String(seedanceInputs.lastFrame || '').trim();
+
+  const data = await requestJson('/api/video/seedance/25-gz/videos', {
+    token,
+    method: 'POST',
+    body: {
+      model: 'seedance2.5-gz',
+      prompt,
+      duration,
+      aspect_ratio: ratio,
+      resolution,
+      generate_audio: settings.generateAudio !== false,
+      first_image: firstImage || undefined,
+      last_image: lastImage || undefined,
+      reference_images: images,
+      reference_videos: videos,
+      reference_audios: audios,
+    },
+  });
+
+  const taskId = extractTaskId(data) || data?.task_id;
+  if (!taskId) {
+    throw new Error('Seedance 2.5 官方任务创建成功，但未返回任务 ID');
+  }
+
+  return { taskId: String(taskId), provider: 'seedance-2.5' };
+}
+
 async function createFlux3Task({
   token,
   prompt,
@@ -635,6 +683,8 @@ export async function createVideoGenerationTask({
       return createSeedanceManxueTask({ token, prompt, settings, referenceImages, seedanceInputs });
     case 'seedance25':
       return createSeedance25Task({ token, prompt, settings, referenceImages, seedanceInputs });
+    case 'seedance25gz':
+      return createSeedance25GzTask({ token, prompt, settings, referenceImages, seedanceInputs });
     case 'flux3':
       return createFlux3Task({ token, prompt, settings, referenceImages, veoFrames });
     case 'grok':

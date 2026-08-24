@@ -56,6 +56,7 @@ import {
   SEEDANCE_REF_AUDIO_MAX,
   SEEDANCE25_REF_VIDEO_MAX,
   SEEDANCE25_REF_AUDIO_MAX,
+  SEEDANCE25_GZ_REF_VIDEO_MAX,
   FLUX3_MODE_OPTIONS,
   FLUX3_REF_KEYFRAME_MAX,
   getImageReferenceMax,
@@ -1382,6 +1383,7 @@ export function VideoToolbar({
   const isVeo = family === 'veo';
   const isSeedance = family === 'seedance';
   const isSeedance25 = family === 'seedance25';
+  const isSeedance25Gz = family === 'seedance25gz';
   const isFlux3 = family === 'flux3';
   const isMinimax = family === 'minimax';
   const veoGenerationType = node.videoGenerationType || 'frame';
@@ -1394,10 +1396,13 @@ export function VideoToolbar({
   const hasSeedanceReferenceImages = seedanceReferenceMode && resolvedReferences.length > 0;
   const showSeedanceReferenceMedia = isSeedance && !hasSeedanceFrames;
   const showMinimaxFrames = isMinimax;
+  const showSeedance25GzFrames = isSeedance25Gz;
+  const hasSeedance25GzFrames = showSeedance25GzFrames && Boolean(resolvedFirstFrame || resolvedLastFrame);
   const showFlux3Frames = isFlux3 && flux3Mode === 'flf';
   const showFlux3ReferenceImages = isFlux3 && (flux3Mode === 'i2v' || flux3Mode === 'keyframes');
-  const showGenericReferenceImages = !isVeo && !isSeedance && !isFlux3;
-  const showSeedance25Media = isSeedance25;
+  const showGenericReferenceImages = !isVeo && !isSeedance && !isFlux3 && !(isSeedance25Gz && hasSeedance25GzFrames);
+  const showSeedance25Media = isSeedance25 || isSeedance25Gz;
+  const seedance25VideoMax = isSeedance25Gz ? SEEDANCE25_GZ_REF_VIDEO_MAX : SEEDANCE25_REF_VIDEO_MAX;
   const familyOptions = getVisibleVideoFamilyOptions(soraVisibility);
   const modelOptions = getVideoModelOptionsForVisibility(family, soraVisibility);
   const model = modelOptions.some((option) => option.value === node.videoModel)
@@ -1542,12 +1547,12 @@ export function VideoToolbar({
       patch.flux3DraftCacheUrl = node.flux3DraftCacheUrl || '';
     }
 
-    if (nextFamily !== 'veo' && nextFamily !== 'seedance' && nextFamily !== 'minimax' && nextFamily !== 'flux3') {
+    if (nextFamily !== 'veo' && nextFamily !== 'seedance' && nextFamily !== 'minimax' && nextFamily !== 'flux3' && nextFamily !== 'seedance25gz') {
       patch.videoFirstFrame = null;
       patch.videoLastFrame = null;
     }
 
-    if (nextFamily !== 'seedance' && nextFamily !== 'seedance25') {
+    if (nextFamily !== 'seedance' && nextFamily !== 'seedance25' && nextFamily !== 'seedance25gz') {
       patch.videoReferenceVideos = [];
       patch.videoReferenceAudios = [];
     }
@@ -1971,7 +1976,7 @@ export function VideoToolbar({
                 />
               </div>
             ) : null}
-            {showMinimaxFrames || showFlux3Frames ? (
+            {showMinimaxFrames || showFlux3Frames || showSeedance25GzFrames ? (
               <div className="veo-frame-row">
                 <VeoFrameSlot
                   label="首帧"
@@ -1993,13 +1998,13 @@ export function VideoToolbar({
             ) : null}
             {showSeedance25Media ? (
               <div className="seedance-section">
-                {SEEDANCE25_REF_VIDEO_MAX > 0 ? (
+                {seedance25VideoMax > 0 ? (
                   <SeedanceMediaPanel
                     label="参考视频"
                     icon={Film}
                     mediaType="video"
                     items={referenceVideos}
-                    maxCount={SEEDANCE25_REF_VIDEO_MAX}
+                    maxCount={seedance25VideoMax}
                     disabled={isRunning}
                     isRunning={isRunning}
                     onPick={() => onOpenAssetLibrary(node.id, 's25-ref-video')}
@@ -2433,7 +2438,7 @@ export function VideoToolbar({
           />
         </div>
       ) : null}
-      {showMinimaxFrames || showFlux3Frames ? (
+      {showMinimaxFrames || showFlux3Frames || showSeedance25GzFrames ? (
         <div className="veo-frame-row">
           <VeoFrameSlot
             label="首帧"
@@ -2456,13 +2461,13 @@ export function VideoToolbar({
 
       {showSeedance25Media ? (
         <div className="seedance-section">
-          {SEEDANCE25_REF_VIDEO_MAX > 0 ? (
+          {seedance25VideoMax > 0 ? (
             <SeedanceMediaPanel
               label="参考视频"
               icon={Film}
               mediaType="video"
               items={referenceVideos}
-              maxCount={SEEDANCE25_REF_VIDEO_MAX}
+              maxCount={seedance25VideoMax}
               disabled={isRunning}
               isRunning={isRunning}
               onPick={() => onOpenAssetLibrary(node.id, 's25-ref-video')}
