@@ -968,3 +968,99 @@ export async function understandVideo({
   await sleep(2000);
   return pollVideoUnderstandingTask(token, taskId);
 }
+
+export const VIDEO_TRANSLATE_MAX_SECONDS = 8 * 60;
+
+export const VIDEO_TRANSLATE_LANGUAGES = [
+  { value: 'English (United States)', label: '英语（美国）' },
+  { value: 'English (UK)', label: '英语（英国）' },
+  { value: 'Chinese (Mandarin, Simplified)', label: '中文普通话' },
+  { value: 'Chinese (Cantonese, Traditional)', label: '粤语' },
+  { value: 'Japanese (Japan)', label: '日语' },
+  { value: 'Korean (Korea)', label: '韩语' },
+  { value: 'Spanish (Spain)', label: '西班牙语' },
+  { value: 'French (France)', label: '法语' },
+  { value: 'German (Germany)', label: '德语' },
+  { value: 'Portuguese (Brazil)', label: '葡萄牙语（巴西）' },
+  { value: 'Italian (Italy)', label: '意大利语' },
+  { value: 'Arabic (Saudi Arabia)', label: '阿拉伯语' },
+  { value: 'Hindi (India)', label: '印地语' },
+  { value: 'Thai (Thailand)', label: '泰语' },
+  { value: 'Vietnamese (Vietnam)', label: '越南语' },
+  { value: 'Indonesian (Indonesia)', label: '印尼语' },
+  { value: 'Russian (Russia)', label: '俄语' },
+  { value: 'Turkish (Türkiye)', label: '土耳其语' },
+];
+
+export function videoTranslateBillingModel(mode) {
+  return String(mode).toLowerCase() === 'precision'
+    ? 'video_translate_precision'
+    : 'video_translate_speed';
+}
+
+export async function createVideoTranslate({
+  token,
+  videoUrl,
+  outputLanguage,
+  mode = 'speed',
+  translateAudioOnly = false,
+  enableCaption = false,
+} = {}) {
+  const url = String(videoUrl || '').trim();
+  const lang = String(outputLanguage || '').trim();
+  if (!url) throw new Error('请先选择或生成视频');
+  if (!lang) throw new Error('请选择目标语言');
+
+  const data = await requestJson('/api/video/translate', {
+    token,
+    method: 'POST',
+    body: {
+      video_url: url,
+      output_language: lang,
+      mode: mode === 'precision' ? 'precision' : 'speed',
+      translate_audio_only: !!translateAudioOnly,
+      enable_dynamic_duration: true,
+      enable_caption: !!enableCaption,
+    },
+    networkErrorMessage: '视频翻译提交失败，无法连接到服务',
+  });
+
+  const taskId = data?.task_id || data?.taskId;
+  if (!taskId) throw new Error('翻译任务已提交，但未返回任务 ID');
+  return {
+    taskId: String(taskId),
+    status: data?.status || 'pending',
+  };
+}
+
+export async function waitForVideoTranslate({
+  token,
+  taskId,
+  maxAttempts = 180,
+  intervalMs = 4000,
+  onProgress,
+} = {}) {
+  if (!taskId) throw new Error('缺少任务 ID');
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const data = await requestJson(`/api/video/translate/task/${encodeURIComponent(taskId)}`, {
+      token,
+      method: 'GET',
+      networkErrorMessage: '查询翻译任务失败',
+    });
+    const status = String(data?.status || '').toLowerCase();
+    if (onProgress) onProgress({ status });
+    if (status === 'success' || status === 'completed' || status === 'finish') {
+      const videoUrl = normalizeVideoUrl(data?.output_url || data?.outputUrl || '');
+      if (!videoUrl) throw new Error('翻译完成但未返回视频');
+      return {
+        videoUrl,
+        captionUrl: normalizeVideoUrl(data?.caption_url || data?.captionUrl || ''),
+      };
+    }
+    if (status === 'failed' || status === 'fail' || status === 'error') {
+      throw new Error(data?.fail_reason || data?.failReason || data?.error || '视频翻译失败');
+    }
+    await wait(attempt < 8 ? 1500 : intervalMs);
+  }
+  throw new Error('视频翻译超时，请稍后在任务记录中查看');
+}

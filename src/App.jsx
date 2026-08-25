@@ -99,7 +99,7 @@ import { sseManager } from './lib/sseManager';
 import { isBackendInCooldown } from './lib/jimiaigoApi';
 import { fetchUserInfo, fetchPricingList, fetchPricingStatus } from './lib/userApi';
 import { updateModelActiveMap } from './lib/pricingStatus';
-import { calculateEstimatedCost } from './lib/pricing';
+import { calculateCost, calculateEstimatedCost } from './lib/pricing';
 import { fetchSiteConfig, getDefaultSiteSettings } from './lib/siteApi';
 import {
   buildImageDownloadFilename,
@@ -148,12 +148,16 @@ import {
 } from './lib/storage';
 import {
   createVideoGenerationTask,
+  createVideoTranslate,
   downloadVideoFile,
   formatVideoUnderstandingResult,
   getSd2ManxueAssetList,
   normalizeVideoUrl,
   resolveSeedanceMediaPreviewUrl,
   understandVideo,
+  waitForVideoTranslate,
+  VIDEO_TRANSLATE_MAX_SECONDS,
+  videoTranslateBillingModel,
   DEFAULT_VIDEO_TO_PROMPT_INSTRUCTION,
   uploadAndAuditSeedanceAssets,
 } from './lib/videoApi';
@@ -1533,6 +1537,100 @@ function App() {
       showCopyNotice('已生成剪辑片段的视频节点');
     } catch (error) {
       showCopyNotice(error instanceof Error ? error.message : '剪辑视频失败，请重试');
+    }
+  }
+
+  async function handleTranslateVideo(nodeId, videoUrl, options = {}) {
+    if (!videoUrl) {
+      showCopyNotice('该节点没有可翻译的视频');
+      return;
+    }
+    const targetNode = nodes.find((n) => n.id === nodeId);
+    if (!targetNode) return;
+
+    const duration = Number(options.duration) || 0;
+    const seconds = duration > 0 ? Math.max(1, Math.ceil(duration - 1e-9)) : 0;
+    if (seconds > VIDEO_TRANSLATE_MAX_SECONDS) {
+      showCopyNotice('视频最长支持 8 分钟');
+      return;
+    }
+
+    const token = getOrRequestToken({ onSaved: refreshUserQuota });
+    if (!token) {
+      showCopyNotice('请先登录后再翻译视频');
+      return;
+    }
+
+    const mode = options.mode === 'precision' ? 'precision' : 'speed';
+    const language = options.language || 'English (United States)';
+    const unit = calculateCost(pricingList, videoTranslateBillingModel(mode), userQuota.profile);
+    if (seconds > 0 && unit > 0) {
+      showCopyNotice(`正在提交翻译（约 ${ (unit * seconds).toFixed(4) }）…`);
+    }
+
+    setRunningNodeId(nodeId);
+    updateNode(nodeId, {
+      status: 'running',
+      videoTranslateJob: true,
+      content: '正在翻译视频…',
+    });
+
+    try {
+      const { taskId } = await createVideoTranslate({
+        token,
+        videoUrl: String(videoUrl).split('#')[0],
+        outputLanguage: language,
+        mode,
+      });
+      const result = await waitForVideoTranslate({ token, taskId });
+      const outputUrl = result.videoUrl;
+      const targetX = targetNode.x + targetNode.width + 48;
+      const targetY = targetNode.y;
+      const newNode = createNode('video', targetX, targetY);
+      newNode.title = `${targetNode.title || '视频'}_翻译`;
+      newNode.prompt = targetNode.prompt || '';
+      newNode.content = outputUrl;
+      newNode.videos = [outputUrl];
+      newNode.videoFamily = targetNode.videoFamily;
+      newNode.videoModel = targetNode.videoModel;
+      newNode.videoRoute = targetNode.videoRoute;
+      newNode.videoOrientation = targetNode.videoOrientation;
+      newNode.videoRatio = targetNode.videoRatio;
+      newNode.videoSize = targetNode.videoSize;
+      newNode.videoResolution = targetNode.videoResolution;
+      newNode.videoQuality = targetNode.videoQuality;
+      newNode.videoCount = targetNode.videoCount;
+      newNode.videoGenerationType = targetNode.videoGenerationType;
+      newNode.width = targetNode.width;
+      newNode.height = targetNode.height;
+      newNode.outputAspectCss = targetNode.outputAspectCss;
+      newNode.isEntrance = true;
+
+      updateNode(nodeId, { status: 'idle', videoTranslateJob: false });
+      updateActiveCanvas((doc) => ({
+        ...doc,
+        nodes: doc.nodes.map((n) => (n.id === nodeId ? { ...n, status: 'idle', videoTranslateJob: false } : n)).concat(newNode),
+      }));
+      setSelectedNodeIds([newNode.id]);
+      setSelectedConnectionId(null);
+      setTimeout(() => {
+        updateActiveCanvas((doc) => ({
+          ...doc,
+          nodes: doc.nodes.map((n) => (n.id === newNode.id ? { ...n, isEntrance: false } : n)),
+        }));
+      }, 1000);
+      showCopyNotice('已生成翻译后的视频节点');
+      flushPersist();
+    } catch (error) {
+      updateNode(nodeId, {
+        status: 'error',
+        videoTranslateJob: false,
+        content: error instanceof Error ? error.message : '视频翻译失败',
+      });
+      showCopyNotice(error instanceof Error ? error.message : '视频翻译失败');
+    } finally {
+      setRunningNodeId(null);
+      refreshUserQuota();
     }
   }
 
@@ -4296,6 +4394,7 @@ function App() {
                 onExtractVideoFrame={handleExtractVideoFrame}
                 onExtractVideoClip={handleExtractVideoClip}
                 onExtractVideoAudio={handleExtractVideoAudio}
+                onTranslateVideo={handleTranslateVideo}
               />
             ))}
           </div>

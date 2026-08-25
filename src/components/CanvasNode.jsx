@@ -73,6 +73,7 @@ import {
   getSoraRouteVisibility,
   normalizeVideoUrl,
   resolveSeedanceMediaPreviewUrl,
+  VIDEO_TRANSLATE_LANGUAGES,
 } from '../lib/videoApi';
 import { isImageContent, isVideoContent, isAudioContent } from '../lib/canvas';
 import { normalizeAudioUrl, AUDIO_FILE_ACCEPT, filterAudioFiles } from '../lib/audioApi';
@@ -487,6 +488,7 @@ function VideoBody({
   onExtractVideoFrame,
   onExtractVideoClip,
   onExtractVideoAudio,
+  onTranslateVideo,
 }) {
   const displayVideo = getVideoDisplayUrl(node);
   const showDemoBadge = isDefaultDemoMediaUrl(displayVideo, DEFAULT_VIDEO_URL);
@@ -498,6 +500,9 @@ function VideoBody({
   const [videoDuration, setVideoDuration] = useState(0);
   const [isClipping, setIsClipping] = useState(false);
   const [isExtractingAudio, setIsExtractingAudio] = useState(false);
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [translateLang, setTranslateLang] = useState(VIDEO_TRANSLATE_LANGUAGES[0].value);
+  const [translateMode, setTranslateMode] = useState('speed');
   const [clipStart, setClipStart] = useState(0);
   const [clipEnd, setClipEnd] = useState(10);
   const trackRef = useRef(null);
@@ -630,7 +635,7 @@ function VideoBody({
       <NodeGenerationState
         node={node}
         kind="video"
-        label="正在生成视频"
+        label={node.videoTranslateJob ? '正在翻译视频' : '正在生成视频'}
         onBeginDrag={onBeginDrag}
       />
     );
@@ -798,6 +803,20 @@ function VideoBody({
                 {isExtractingAudio ? <LoaderCircle size={13} className="spin" /> : <Headphones size={13} />}
                 <span>{isExtractingAudio ? '分离中' : '分离音视频'}</span>
               </button>
+              <button
+                type="button"
+                className="image-output-action-button"
+                title="将视频翻译为目标语言"
+                data-tooltip="视频翻译"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setIsTranslating(true);
+                  videoRef.current?.pause();
+                }}
+              >
+                <Languages size={13} />
+                <span>翻译</span>
+              </button>
             </div>
           )}
 
@@ -805,6 +824,52 @@ function VideoBody({
             <div className="video-audio-extract-overlay" onPointerDown={(event) => event.stopPropagation()}>
               <LoaderCircle size={18} className="spin-icon" />
               <span>正在分离音频和画面…</span>
+            </div>
+          ) : null}
+
+          {isTranslating ? (
+            <div className="video-translate-overlay" onPointerDown={(event) => event.stopPropagation()}>
+              <button className="video-clip-btn cancel" onClick={() => setIsTranslating(false)} title="取消">
+                <X size={14} />
+              </button>
+              <strong>视频翻译</strong>
+              <CustomSelect
+                compact
+                label="语言"
+                value={translateLang}
+                options={VIDEO_TRANSLATE_LANGUAGES}
+                onChange={setTranslateLang}
+              />
+              <div className="video-translate-modes">
+                <button
+                  type="button"
+                  className={translateMode === 'speed' ? 'active' : ''}
+                  onClick={() => setTranslateMode('speed')}
+                >
+                  极速
+                </button>
+                <button
+                  type="button"
+                  className={translateMode === 'precision' ? 'active' : ''}
+                  onClick={() => setTranslateMode('precision')}
+                >
+                  精翻
+                </button>
+              </div>
+              <button
+                type="button"
+                className="video-translate-submit"
+                onClick={() => {
+                  setIsTranslating(false);
+                  onTranslateVideo?.(node.id, displayVideo, {
+                    language: translateLang,
+                    mode: translateMode,
+                    duration: videoDuration,
+                  });
+                }}
+              >
+                开始翻译
+              </button>
             </div>
           ) : null}
 
@@ -3208,6 +3273,7 @@ export function CanvasNode({
   onExtractVideoFrame,
   onExtractVideoClip,
   onExtractVideoAudio,
+  onTranslateVideo,
 }) {
   const imageDisplayImages = node.type === 'image' ? getImageDisplayImages(node) : [];
   const canExplodeImageOutputs =
@@ -3503,6 +3569,7 @@ export function CanvasNode({
             onExtractVideoFrame={onExtractVideoFrame}
             onExtractVideoClip={onExtractVideoClip}
             onExtractVideoAudio={onExtractVideoAudio}
+            onTranslateVideo={onTranslateVideo}
           />
         )}
       </div>
