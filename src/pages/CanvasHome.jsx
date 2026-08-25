@@ -16,12 +16,14 @@ import {
   Sun,
   Video,
   Wallet,
+  Mail,
   Workflow,
 } from 'lucide-react';
 import { AnimatedCharacters } from '../components/AnimatedCharacters';
 import { AuthModal } from '../components/AuthModal';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { RechargeModal } from '../components/RechargeModal';
+import { InboxModal } from '../components/InboxModal';
 import { WorkflowTemplateModal } from '../components/WorkflowTemplateModal';
 import { CanvasHomeBackground } from '../components/CanvasHomeBackground';
 import { useHomeEntranceAnimation } from '../hooks/useHomeEntranceAnimation';
@@ -40,7 +42,7 @@ import {
   renameDocument,
 } from '../lib/canvasDocuments';
 import { CANVAS_TUTORIAL_URL } from '../lib/constants';
-import { getStoredChatToken, isBackendInCooldown } from '../lib/jimiaigoApi';
+import { getInboxUnreadCount } from '../lib/inboxApi';
 import { fetchSiteConfig, getDefaultSiteSettings } from '../lib/siteApi';
 import {
   clearAuthToken,
@@ -167,7 +169,7 @@ function CanvasHomeUserAvatar({ user, className = '' }) {
   );
 }
 
-function CanvasHomeUserMenu({ user, onRecharge, onLogout }) {
+function CanvasHomeUserMenu({ user, onRecharge, onInbox, inboxUnread = 0, onLogout }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
   const nickname = user?.nickname || '已登录';
@@ -239,6 +241,11 @@ function CanvasHomeUserMenu({ user, onRecharge, onLogout }) {
               <span>可用余额 {balanceLabel}</span>
             </div>
           </div>
+          <button type="button" role="menuitem" className="canvas-home-user-dropdown-item" onClick={() => run(onInbox)}>
+            <Mail size={16} aria-hidden="true" />
+            <span>站内信</span>
+            {inboxUnread > 0 ? <span className="inbox-unread-badge is-menu">{inboxUnread > 99 ? '99+' : inboxUnread}</span> : null}
+          </button>
           <button type="button" role="menuitem" className="canvas-home-user-dropdown-item" onClick={() => run(onRecharge)}>
             <Wallet size={16} aria-hidden="true" />
             <span>充值</span>
@@ -353,6 +360,8 @@ export function CanvasHome() {
   const [allProjectsVisible, setAllProjectsVisible] = useState(false);
   const [notice, setNotice] = useState('');
   const [showRechargeModal, setShowRechargeModal] = useState(false);
+  const [showInbox, setShowInbox] = useState(false);
+  const [inboxUnread, setInboxUnread] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [workflowTemplateOpen, setWorkflowTemplateOpen] = useState(false);
@@ -498,6 +507,28 @@ export function CanvasHome() {
     }
     setShowRechargeModal(true);
   }, []);
+
+  useEffect(() => {
+    if (!token) {
+      setInboxUnread(0);
+      return undefined;
+    }
+    let cancelled = false;
+    const loadUnread = async () => {
+      try {
+        const data = await getInboxUnreadCount();
+        if (!cancelled) setInboxUnread(Number(data?.count || 0));
+      } catch {
+        if (!cancelled) setInboxUnread(0);
+      }
+    };
+    void loadUnread();
+    const timer = window.setInterval(() => void loadUnread(), 60000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [token, showInbox]);
 
   const handleRechargeSuccess = useCallback(() => {
     refreshAuth();
@@ -682,6 +713,27 @@ export function CanvasHome() {
             <BookOpen size={16} />
             <span>{COPY.tutorialLink}</span>
           </a>
+          <button
+            type="button"
+            className="canvas-home-icon-btn"
+            onClick={() => {
+              if (!token) {
+                setAuthMode('login');
+                setAuthOpen(true);
+                return;
+              }
+              setShowInbox(true);
+            }}
+            aria-label="站内信"
+            title="站内信"
+          >
+            <span className="inbox-button-icon">
+              <Mail size={18} />
+              {inboxUnread > 0 ? (
+                <span className="inbox-unread-badge">{inboxUnread > 99 ? '99+' : inboxUnread}</span>
+              ) : null}
+            </span>
+          </button>
           <button type="button" className="canvas-home-icon-btn" onClick={toggleTheme} aria-label="切换主题">
             {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
           </button>
@@ -702,6 +754,8 @@ export function CanvasHome() {
             <CanvasHomeUserMenu
               user={user}
               onRecharge={openRechargeModal}
+              onInbox={() => setShowInbox(true)}
+              inboxUnread={inboxUnread}
               onLogout={handleLogout}
             />
           ) : (
@@ -910,6 +964,18 @@ export function CanvasHome() {
         siteSlogan={siteSettings.slogan}
         logoUrl={siteSettings.logoUrl}
       />
+
+      {showInbox ? (
+        <InboxModal
+          onClose={() => setShowInbox(false)}
+          onOpenLink={(link) => {
+            setShowInbox(false);
+            if (link === '/pricing' || link === '/recharge-center' || link === '/recharge') {
+              openRechargeModal();
+            }
+          }}
+        />
+      ) : null}
 
       {showRechargeModal ? (
         <RechargeModal

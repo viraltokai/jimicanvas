@@ -11,6 +11,7 @@ import {
   Moon,
   Sun,
   Wallet,
+  Mail,
 } from 'lucide-react';
 import { getNextThemeLabel } from '../lib/theme';
 import { BrandProjectMenu } from './BrandProjectMenu';
@@ -94,6 +95,8 @@ export function Topbar({
   quotaRemaining = null,
   quotaPercentage = null,
   onRecharge,
+  inboxUnread = 0,
+  onOpenInbox,
 }) {
   const cloudMeta = CLOUD_SYNC_META[cloudSyncStatus] || CLOUD_SYNC_META.offline;
   const CloudIcon = cloudMeta.Icon;
@@ -164,6 +167,24 @@ export function Topbar({
             >
               <Wallet size={14} aria-hidden="true" />
               <span>充值</span>
+            </button>
+          ) : null}
+
+          {onOpenInbox ? (
+            <button
+              type="button"
+              className="topbar-shortcuts-button"
+              onClick={onOpenInbox}
+              title="站内信"
+              aria-label="站内信"
+            >
+              <span className="inbox-button-icon">
+                <Mail size={14} aria-hidden="true" />
+                {inboxUnread > 0 ? (
+                  <span className="inbox-unread-badge">{inboxUnread > 99 ? '99+' : inboxUnread}</span>
+                ) : null}
+              </span>
+              <span>站内信</span>
             </button>
           ) : null}
 

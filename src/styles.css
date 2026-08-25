@@ -3625,6 +3625,107 @@ html[data-theme='light'] .workflow-template-icon.icon-layers {
 
 .customer-service-hint {
   margin: 0;
+}
+
+.inbox-modal {
+  width: min(520px, 100%);
+  max-height: min(78vh, 720px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid var(--border-subtle);
+  background: var(--modal-bg);
+  box-shadow: var(--modal-shadow);
+}
+
+.inbox-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inbox-modal-body {
+  overflow: auto;
+  padding: 4px 8px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.inbox-modal-empty {
+  margin: 32px 0;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.inbox-modal-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.inbox-modal-item.is-unread {
+  background: rgba(99, 102, 241, 0.12);
+}
+
+.inbox-modal-item strong {
+  font-size: 13px;
+}
+
+.inbox-modal-item p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #94a3b8;
+}
+
+.inbox-modal-item-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.inbox-modal-type {
+  font-weight: 700;
+  color: #d97706;
+}
+
+.inbox-button-icon {
+  position: relative;
+  display: inline-flex;
+}
+
+.inbox-unread-badge {
+  position: absolute;
+  top: -7px;
+  right: -8px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #e11d48;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+}
+
+.inbox-unread-badge.is-menu {
+  position: static;
+  margin-left: auto;
+}
   color: var(--text-muted);
   font-size: 13px;
   line-height: 1.5;

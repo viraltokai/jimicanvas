@@ -16,6 +16,7 @@ import { ConnectionLayer } from './components/ConnectionLayer';
 import { FloatingDock } from './components/FloatingDock';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { CustomerServiceModal } from './components/CustomerServiceModal';
+import { InboxModal } from './components/InboxModal';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 import { RechargeModal } from './components/RechargeModal';
 import { Topbar } from './components/Topbar';
@@ -93,6 +94,7 @@ import {
   saveCanvasDocuments,
 } from './lib/canvasApi';
 import { getOrRequestToken, getStoredChatToken, runChatCompletion } from './lib/chatApi';
+import { getInboxUnreadCount } from './lib/inboxApi';
 import { sseManager } from './lib/sseManager';
 import { isBackendInCooldown } from './lib/jimiaigoApi';
 import { fetchUserInfo, fetchPricingList, fetchPricingStatus } from './lib/userApi';
@@ -248,6 +250,8 @@ function App() {
   const [uploadingNodeId, setUploadingNodeId] = useState(null);
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   const [showCustomerService, setShowCustomerService] = useState(false);
+  const [showInbox, setShowInbox] = useState(false);
+  const [inboxUnread, setInboxUnread] = useState(0);
   const [workflowTemplateOpen, setWorkflowTemplateOpen] = useState(false);
   const [siteSettings, setSiteSettings] = useState(getDefaultSiteSettings);
   const [assetPicker, setAssetPicker] = useState({
@@ -323,6 +327,28 @@ function App() {
   useEffect(() => {
     viewportOffsetRef.current = viewportOffset;
   }, [viewportOffset]);
+
+  useEffect(() => {
+    if (!getStoredChatToken()) {
+      setInboxUnread(0);
+      return undefined;
+    }
+    let cancelled = false;
+    const loadUnread = async () => {
+      try {
+        const data = await getInboxUnreadCount();
+        if (!cancelled) setInboxUnread(Number(data?.count || 0));
+      } catch {
+        if (!cancelled) setInboxUnread(0);
+      }
+    };
+    void loadUnread();
+    const timer = window.setInterval(() => void loadUnread(), 60000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [showInbox]);
 
   const refreshUserQuota = async () => {
     const token = getStoredChatToken();
@@ -879,6 +905,10 @@ function App() {
       if (isEditableKeyboardTarget(event.target)) return;
 
       if (event.key === 'Escape') {
+        if (showInbox) {
+          setShowInbox(false);
+          return;
+        }
         if (showCustomerService) {
           setShowCustomerService(false);
           return;
@@ -969,7 +999,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedConnectionId, selectedNodeIds, showCustomerService, showKeyboardShortcuts]);
+  }, [selectedConnectionId, selectedNodeIds, showCustomerService, showInbox, showKeyboardShortcuts]);
 
   const activeCanvas = documents.find((doc) => doc.id === activeCanvasId) || documents[0];
   const canvasBackground = normalizeCanvasBackground(activeCanvas?.background);
@@ -3956,6 +3986,18 @@ function App() {
         <KeyboardShortcutsModal onClose={() => setShowKeyboardShortcuts(false)} />
       ) : null}
 
+      {showInbox ? (
+        <InboxModal
+          onClose={() => setShowInbox(false)}
+          onOpenLink={(link) => {
+            setShowInbox(false);
+            if (link === '/pricing' || link === '/recharge-center' || link === '/recharge') {
+              openRechargeModal();
+            }
+          }}
+        />
+      ) : null}
+
       {showCustomerService ? (
         <CustomerServiceModal
           qrUrl={siteSettings.kefuQrUrl}
@@ -4113,6 +4155,8 @@ function App() {
           quotaRemaining={userQuota.remaining}
           quotaPercentage={userQuota.percentage}
           onRecharge={openRechargeModal}
+          inboxUnread={inboxUnread}
+          onOpenInbox={() => setShowInbox(true)}
         />
 
         <section
