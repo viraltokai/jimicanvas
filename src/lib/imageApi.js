@@ -1,5 +1,5 @@
 import { DEFAULT_IMAGE_MODEL, DEFAULT_IMAGE_RATIO, DEFAULT_IMAGE_RESOLUTION } from './constants';
-import { getChatApiBaseUrl, requestJimiaigo, requestJimiaigoForm } from './jimiaigoApi';
+import { getApiUrl, getChatApiBaseUrl, getStoredChatToken, requestJimiaigo, requestJimiaigoForm } from './jimiaigoApi';
 import {
   DEFAULT_IMAGE_TO_PROMPT_INSTRUCTION,
   formatStructuredPromptResult as formatImageUnderstandingResult,
@@ -117,13 +117,36 @@ async function urlToInlineData(url) {
     return dataUrlToInlineData(url);
   }
 
-  const response = await fetch(normalizeImageUrl(url), { mode: 'cors' });
-  if (!response.ok) {
-    throw new Error(`参考图读取失败: ${response.statusText}`);
+  const absolute = normalizeImageUrl(url);
+  if (!absolute) return null;
+
+  const sameOrigin =
+    absolute.startsWith('/') ||
+    absolute.startsWith(window.location.origin) ||
+    absolute.startsWith('blob:');
+
+  const tryFetch = async (target, headers = {}) => {
+    const response = await fetch(target, { method: 'GET', headers, credentials: sameOrigin ? 'same-origin' : 'omit' });
+    if (!response.ok) {
+      throw new Error(`参考图读取失败: ${response.statusText}`);
+    }
+    const blob = await response.blob();
+    const dataUrl = await fileToDataUrl(blob);
+    return dataUrlToInlineData(dataUrl);
+  };
+
+  if (sameOrigin) {
+    return tryFetch(absolute);
   }
-  const blob = await response.blob();
-  const dataUrl = await fileToDataUrl(blob);
-  return dataUrlToInlineData(dataUrl);
+
+  const token = getStoredChatToken();
+  const proxyUrl = getApiUrl('/api/media/proxy', { url: absolute, ...(token ? { token } : {}) });
+  try {
+    return await tryFetch(proxyUrl, token ? { Authorization: token } : {});
+  } catch (error) {
+    console.warn('媒体代理拉取参考图失败，尝试直连:', absolute, error);
+    return tryFetch(absolute);
+  }
 }
 
 async function buildReferenceParts(referenceImages = []) {
