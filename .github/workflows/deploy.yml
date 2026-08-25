@@ -79,3 +79,58 @@ jobs:
             docker compose -f docker-compose.prod.yml pull canvas
             docker compose -f docker-compose.prod.yml up -d canvas
             docker image prune -f
+
+  notify-telegram:
+    name: Telegram Notify
+    needs: [build-and-push, deploy-overseas]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Telegram notification
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_CHAT_ID:-}" ]; then
+            echo "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set, skip notify"
+            exit 0
+          fi
+
+          BUILD_RESULT="${{ needs.build-and-push.result }}"
+          DEPLOY_RESULT="${{ needs.deploy-overseas.result }}"
+
+          if [ "$BUILD_RESULT" = "success" ] && [ "$DEPLOY_RESULT" = "success" ]; then
+            STATUS="✅ Success"
+          else
+            STATUS="❌ Failed"
+          fi
+
+          SHORT_SHA="${GITHUB_SHA::8}"
+          COMMIT_MSG=$(echo '${{ github.event.head_commit.message }}' | head -n 1 | cut -c1-120)
+          TEXT=$(cat <<EOF
+          <b>CI/CD · jimicanvas</b>
+          ${STATUS}
+
+          <b>Repo</b>: ${{ github.repository }}
+          <b>Branch</b>: ${{ github.ref_name }}
+          <b>Commit</b>: <code>${SHORT_SHA}</code>
+          <b>Author</b>: ${{ github.actor }}
+          <b>Message</b>: ${COMMIT_MSG}
+
+          <b>Jobs</b>
+          · build: ${BUILD_RESULT}
+          · deploy: ${DEPLOY_RESULT}
+
+          <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View run</a>
+          EOF
+          )
+
+          TEXT=$(printf '%s\n' "$TEXT" | sed 's/^[[:space:]]*//')
+
+          curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${TEXT}" \
+            --data-urlencode "parse_mode=HTML" \
+            --data-urlencode "disable_web_page_preview=true" \
+            >/dev/null
