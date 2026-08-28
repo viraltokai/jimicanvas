@@ -33,8 +33,8 @@ jobs:
           echo "image=${{ env.REGISTRY }}/${OWNER}/${{ env.IMAGE_NAME }}" >> $GITHUB_OUTPUT
           echo "tag=${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
           echo "channel_tag=overseas" >> $GITHUB_OUTPUT
-          echo "vite_api_url=https://canvas.viraltok.ai" >> $GITHUB_OUTPUT
-          echo "vite_web_app_url=https://www.viraltok.ai" >> $GITHUB_OUTPUT
+          echo "vite_api_url=https://canvas.viralwave.ai" >> $GITHUB_OUTPUT
+          echo "vite_web_app_url=https://www.viralwave.ai" >> $GITHUB_OUTPUT
 
       - name: Login to GHCR
         uses: docker/login-action@v3
