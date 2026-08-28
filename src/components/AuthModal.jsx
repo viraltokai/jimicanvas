@@ -10,6 +10,7 @@ import {
   X,
 } from 'lucide-react';
 import { AnimatedCharacters } from './AnimatedCharacters';
+import { SiteLogo } from './SiteLogo';
 import {
   fetchPublicRoles,
   googleLogin,
@@ -298,13 +299,15 @@ export function AuthModal({
           <div className="auth-modal-decor-blur auth-modal-decor-blur-2" aria-hidden="true" />
 
           <div className="auth-modal-brand">
-            {logoUrl ? (
-              <img src={logoUrl} alt="" className="auth-modal-brand-logo" />
-            ) : (
-              <span className="auth-modal-brand-mark">
-                <Sparkles size={18} />
-              </span>
-            )}
+            <SiteLogo
+              url={logoUrl}
+              className="auth-modal-brand-logo"
+              fallback={
+                <span className="auth-modal-brand-mark">
+                  <Sparkles size={18} aria-hidden="true" />
+                </span>
+              }
+            />
             <span className="auth-modal-brand-name">{siteTitle}</span>
           </div>
 
@@ -322,13 +325,15 @@ export function AuthModal({
         <div className="auth-modal-right">
           <div className="auth-modal-form-wrap">
             <div className="auth-modal-mobile-brand">
-              {logoUrl ? (
-                <img src={logoUrl} alt="" className="auth-modal-mobile-logo" />
-              ) : (
-                <span className="auth-modal-brand-mark auth-modal-brand-mark-sm">
-                  <Sparkles size={16} />
-                </span>
-              )}
+              <SiteLogo
+                url={logoUrl}
+                className="auth-modal-mobile-logo"
+                fallback={
+                  <span className="auth-modal-brand-mark auth-modal-brand-mark-sm">
+                    <Sparkles size={16} aria-hidden="true" />
+                  </span>
+                }
+              />
               <span>{siteTitle}</span>
             </div>
 

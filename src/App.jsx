@@ -101,6 +101,7 @@ import { fetchUserInfo, fetchPricingList, fetchPricingStatus } from './lib/userA
 import { updateModelActiveMap } from './lib/pricingStatus';
 import { calculateCost, calculateEstimatedCost } from './lib/pricing';
 import { fetchSiteConfig, getDefaultSiteSettings } from './lib/siteApi';
+import { resolveLogoUrl } from './lib/siteBrand';
 import {
   buildImageDownloadFilename,
   createImageGenerationTask,
@@ -785,7 +786,7 @@ function App() {
           link.rel = 'icon';
           document.head.appendChild(link);
         }
-        link.href = settings.logoUrl;
+        link.href = resolveLogoUrl(settings.logoUrl);
       }
     });
 

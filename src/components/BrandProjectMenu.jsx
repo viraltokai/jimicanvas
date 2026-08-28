@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, FolderKanban, Home, Plus, Trash2, Wand2 } from 'lucide-react';
+import { SiteLogo } from './SiteLogo';
 
 export function BrandProjectMenu({
   siteTitle = 'JimiCanvas',
@@ -146,11 +147,11 @@ export function BrandProjectMenu({
         title="项目菜单"
       >
         <span className={`brand-mark ${siteLogoUrl ? 'has-logo' : ''}`}>
-          {siteLogoUrl ? (
-            <img src={siteLogoUrl} alt="" className="brand-mark-logo" />
-          ) : (
-            <Wand2 size={18} />
-          )}
+          <SiteLogo
+            url={siteLogoUrl}
+            className="brand-mark-logo"
+            fallback={<Wand2 size={18} aria-hidden="true" />}
+          />
         </span>
         <span className="brand-project-site-title">{siteTitle}</span>
         <ChevronDown size={16} className={`brand-project-chevron ${open ? 'is-open' : ''}`} />

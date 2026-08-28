@@ -25,10 +25,11 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { RechargeModal } from '../components/RechargeModal';
 import { InboxModal } from '../components/InboxModal';
 import { WorkflowTemplateModal } from '../components/WorkflowTemplateModal';
+import { SiteLogo } from '../components/SiteLogo';
 import { CanvasHomeBackground } from '../components/CanvasHomeBackground';
 import { useHomeEntranceAnimation } from '../hooks/useHomeEntranceAnimation';
 import { useTheme } from '../hooks/useTheme';
-import { openCanvasEditor } from '../lib/appNavigation';
+import { openCanvasEditor, getJimiaiAppBaseUrl } from '../lib/appNavigation';
 import {
   deleteCanvasDocument,
   fetchCanvasDocument,
@@ -43,6 +44,7 @@ import {
 } from '../lib/canvasDocuments';
 import { CANVAS_TUTORIAL_URL } from '../lib/constants';
 import { getInboxUnreadCount } from '../lib/inboxApi';
+import { getStoredChatToken, isBackendInCooldown } from '../lib/jimiaigoApi';
 import { fetchSiteConfig, getDefaultSiteSettings } from '../lib/siteApi';
 import {
   clearAuthToken,
@@ -692,17 +694,21 @@ export function CanvasHome() {
       {notice ? <div className="canvas-home-notice">{notice}</div> : null}
 
       <header className="canvas-home-topbar">
-        <div className="canvas-home-brand">
-          {siteSettings.logoUrl ? (
-            <img src={siteSettings.logoUrl} alt="" className="canvas-home-logo" />
-          ) : (
-            <Sparkles size={20} />
-          )}
+        <a
+          href={getJimiaiAppBaseUrl() || '/'}
+          className="canvas-home-brand"
+          aria-label="返回主站"
+        >
+          <SiteLogo
+            url={siteSettings.logoUrl}
+            className="canvas-home-logo"
+            fallback={<Sparkles size={20} aria-hidden="true" />}
+          />
           <div>
             <strong>{siteSettings.title || COPY.pageTitle}</strong>
             <span>{siteSettings.slogan}</span>
           </div>
-        </div>
+        </a>
         <div className="canvas-home-topbar-actions">
           <a
             href={CANVAS_TUTORIAL_URL}

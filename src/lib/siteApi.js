@@ -1,6 +1,7 @@
 import { DEFAULT_SITE_SLOGAN, DEFAULT_SITE_TITLE } from './constants';
 import { API_SUCCESS_CODE, getApiUrl, parseResponseBody } from './jimiaigoApi';
 import { normalizeImageUrl } from './imageApi';
+import { resolveLogoUrl, rewriteLegacyDomain } from './siteBrand';
 
 export function getDefaultSiteSettings() {
   return {
@@ -28,8 +29,8 @@ export async function fetchSiteConfig() {
     return {
       title: data.zh_title || data.zhTitle || defaults.title,
       slogan: data.slogan || defaults.slogan,
-      kefuQrUrl: kefuUrl ? normalizeImageUrl(kefuUrl) : '',
-      logoUrl: logoUrl ? normalizeImageUrl(logoUrl) : '',
+      kefuQrUrl: kefuUrl ? normalizeImageUrl(rewriteLegacyDomain(kefuUrl)) : '',
+      logoUrl: resolveLogoUrl(logoUrl),
     };
   } catch {
     return defaults;
