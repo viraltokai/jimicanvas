@@ -69,6 +69,8 @@ export const SEEDANCE25_REF_VIDEO_MAX = 0;
 export const SEEDANCE25_REF_AUDIO_MAX = 10;
 export const SEEDANCE25_MODEL = 'seedance-2.5';
 export const SEEDANCE25_GZ_MODEL = 'seedance2.5-gz';
+export const SEEDANCE25_AR_MD_MODEL = 'seedance2.5-md';
+export const SEEDANCE25_AR_30S_MODEL = 'seedance2.5-30s';
 export const SEEDANCE25_GZ_REF_VIDEO_MAX = 10;
 export const FLUX3_MODEL = 'flux-3-draft';
 export const FLUX3_MODE_OPTIONS = [
@@ -133,6 +135,7 @@ export const VIDEO_FAMILY_OPTIONS = [
   { value: 'seedance', label: 'Seedance' },
   { value: 'seedance25', label: 'Seedance 2.5' },
   { value: 'seedance25gz', label: 'Seedance 2.5 官方' },
+  { value: 'seedance25ar', label: 'Seedance 2.5 AR' },
   { value: 'flux3', label: 'Flux 3' },
   { value: 'grok', label: 'Grok' },
   { value: 'minimax', label: 'MiniMax H3' },
@@ -315,6 +318,26 @@ export const VIDEO_FAMILY_CONFIG = {
     defaultOrientation: 'portrait',
     maxCount: 1,
     resolutionKey: 'resolution',
+    ratioKey: 'ratio',
+  },
+  seedance25ar: {
+    provider: 'seedance2.5-ar',
+    models: [
+      { value: SEEDANCE25_AR_MD_MODEL, label: '15 秒' },
+      { value: SEEDANCE25_AR_30S_MODEL, label: '30 秒' },
+    ],
+    ratios: [
+      { value: '16:9', label: '16:9' },
+      { value: '9:16', label: '9:16' },
+    ],
+    durations: [
+      { value: '15', label: '15 秒' },
+      { value: '30', label: '30 秒' },
+    ],
+    defaultDuration: '15',
+    defaultOrientation: 'portrait',
+    maxCount: 1,
+    resolutionKey: 'ratio',
     ratioKey: 'ratio',
   },
   flux3: {
@@ -530,6 +553,22 @@ export function normalizeSeedanceUiModel(model = '') {
   return model;
 }
 
+export function isSeedance25ArModel(model = '') {
+  const value = String(model).toLowerCase().replace(/_/g, '-');
+  return (
+    value === SEEDANCE25_AR_MD_MODEL ||
+    value === SEEDANCE25_AR_30S_MODEL ||
+    value === 'seedance25ar' ||
+    value.includes('seedance2.5-md') ||
+    value.includes('seedance2.5-30s')
+  );
+}
+
+export function seedance25ArDurationForModel(model = SEEDANCE25_AR_MD_MODEL) {
+  const value = String(model).toLowerCase().replace(/_/g, '-');
+  return value.includes('30s') ? '30' : '15';
+}
+
 export function isSeedance25GzModel(model = '') {
   const value = String(model).toLowerCase().replace(/_/g, '-');
   return (
@@ -542,14 +581,13 @@ export function isSeedance25GzModel(model = '') {
 }
 
 export function isSeedance25Model(model = '') {
-  if (isSeedance25GzModel(model)) return false;
+  if (isSeedance25GzModel(model) || isSeedance25ArModel(model)) return false;
   const value = String(model).toLowerCase().replace(/_/g, '-');
   return (
     value === SEEDANCE25_MODEL ||
     value === 'seedance2.5' ||
     value === 'seedance25' ||
-    value.startsWith('seedance-2.5-') ||
-    value.startsWith('seedance2.5-')
+    value.startsWith('seedance-2.5-')
   );
 }
 
@@ -596,6 +634,7 @@ export function inferVideoFamily(node = {}) {
   if (isFlux3Model(model)) return 'flux3';
   if (model.includes('minimax') || model.includes('hailuo') || isMiniMaxH3Model(model)) return 'minimax';
   if (model.includes('grok')) return 'grok';
+  if (isSeedance25ArModel(model)) return 'seedance25ar';
   if (isSeedance25GzModel(model)) return 'seedance25gz';
   if (isSeedance25Model(model)) return 'seedance25';
   if (isSeedanceManxueModel(model) || model.includes('seedance') || model.includes('doubao')) return 'seedance';
@@ -609,7 +648,9 @@ export function getVideoReferenceImageMax(node = {}) {
   const family = inferVideoFamily(node);
   if (family === 'veo') return VEO_REFERENCE_IMAGE_MAX;
   if (family === 'seedance') return SEEDANCE_REF_IMAGE_MAX;
-  if (family === 'seedance25' || family === 'seedance25gz') return SEEDANCE25_REF_IMAGE_MAX;
+  if (family === 'seedance25' || family === 'seedance25gz' || family === 'seedance25ar') {
+    return SEEDANCE25_REF_IMAGE_MAX;
+  }
   if (family === 'flux3') {
     const mode = normalizeFlux3Mode(node.videoFlux3Mode);
     if (mode === 'i2v') return 1;
@@ -676,6 +717,9 @@ export function isSoraFamilyVisible(soraVisibility) {
 
 export function getVideoResolutionOptions(family, model = '') {
   const config = getVideoFamilyConfig(family);
+  if (family === 'seedance25ar') {
+    return [];
+  }
   if (family === 'sora' || family === 'minimax' || family === 'flux3') {
     return [];
   }
@@ -701,6 +745,9 @@ export function getVideoRatioOptions(family, model = '') {
 
 export function getVideoDurationOptions(family, model = '') {
   const config = getVideoFamilyConfig(family);
+  if (family === 'seedance25ar') {
+    return [];
+  }
   if (family === 'seedance' && isSeedanceManxueModel(model)) {
     return config.manxueDurations || config.durations || [];
   }
@@ -782,8 +829,8 @@ export function normalizeVideoModelSettings({
   let normalizedResolution = resolution;
   if (family === 'sora') {
     normalizedResolution = defaultSoraSize(normalizedRatio);
-  } else if (family === 'minimax' || family === 'flux3') {
-    // MiniMax H3 / Flux 3 不走 resolution 列表
+  } else if (family === 'minimax' || family === 'flux3' || family === 'seedance25ar') {
+    // MiniMax H3 / Flux 3 / Seedance 2.5 AR 不走 resolution 列表
     normalizedResolution = undefined;
   } else if (family === 'seedance' && isSeedanceManxueModel(normalizedModel)) {
     const manxueResolutionFromModel = isManxueSeedance && model !== SEEDANCE_MANXUE_MODEL
@@ -819,11 +866,13 @@ export function normalizeVideoModelSettings({
             ? '6'
             : familyDefaultDuration;
 
-  const normalizedDuration = durationOptions.some((option) => option.value === String(effectiveDuration))
-    ? String(effectiveDuration)
-    : durationOptions.some((option) => option.value === String(modelDefaultDuration))
-      ? String(modelDefaultDuration)
-      : durationOptions[0]?.value || familyDefaultDuration;
+  const normalizedDuration = family === 'seedance25ar'
+    ? seedance25ArDurationForModel(normalizedModel)
+    : durationOptions.some((option) => option.value === String(effectiveDuration))
+      ? String(effectiveDuration)
+      : durationOptions.some((option) => option.value === String(modelDefaultDuration))
+        ? String(modelDefaultDuration)
+        : durationOptions[0]?.value || familyDefaultDuration;
 
   const isManxueProvider = family === 'seedance' && isSeedanceManxueModel(normalizedModel);
   const provider = isManxueProvider ? 'seedance-manxue' : config.provider;

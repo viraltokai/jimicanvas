@@ -538,6 +538,37 @@ async function createSeedance25GzTask({
   return { taskId: String(taskId), provider: 'seedance-2.5' };
 }
 
+async function createSeedance25ArTask({
+  token,
+  prompt,
+  settings,
+  referenceImages,
+}) {
+  const model =
+    String(settings.model || '').includes('30s') ? 'seedance2.5-30s' : 'seedance2.5-md';
+  const allowedRatios = ['16:9', '9:16'];
+  const ratio = allowedRatios.includes(settings.ratio) ? settings.ratio : '9:16';
+  const images = buildReferenceImageUrls(referenceImages).slice(0, 30);
+
+  const data = await requestJson('/api/video/seedance/25-ar/videos', {
+    token,
+    method: 'POST',
+    body: {
+      model,
+      prompt,
+      aspect_ratio: ratio,
+      reference_images: images,
+    },
+  });
+
+  const taskId = extractTaskId(data) || data?.task_id;
+  if (!taskId) {
+    throw new Error('Seedance 2.5 AR 任务创建成功，但未返回任务 ID');
+  }
+
+  return { taskId: String(taskId), provider: 'seedance-2.5-ar' };
+}
+
 async function createFlux3Task({
   token,
   prompt,
@@ -685,6 +716,8 @@ export async function createVideoGenerationTask({
       return createSeedance25Task({ token, prompt, settings, referenceImages, seedanceInputs });
     case 'seedance25gz':
       return createSeedance25GzTask({ token, prompt, settings, referenceImages, seedanceInputs });
+    case 'seedance25ar':
+      return createSeedance25ArTask({ token, prompt, settings, referenceImages });
     case 'flux3':
       return createFlux3Task({ token, prompt, settings, referenceImages, veoFrames });
     case 'grok':

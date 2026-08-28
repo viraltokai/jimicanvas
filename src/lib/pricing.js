@@ -110,6 +110,10 @@ export function resolveBillingModelName(node, options = {}) {
       const res = resolution === '480p' ? '480p' : '720p';
       return hasVideoRefs ? `seedance2.5-gz-video-${res}` : `seedance2.5-gz-${res}`;
     }
+    if (family === 'seedance25ar') {
+      const modelName = String(node.videoModel || options.model || 'seedance2.5-md').trim();
+      return modelName.includes('30s') ? 'seedance2.5-30s' : 'seedance2.5-md';
+    }
     if (family === 'flux3') {
       const mode = String(node.videoFlux3Mode || options.flux3Mode || 't2v').toLowerCase();
       if (mode === 'i2v') return 'flux-3-i2v-draft';

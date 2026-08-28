@@ -1449,6 +1449,7 @@ export function VideoToolbar({
   const isSeedance = family === 'seedance';
   const isSeedance25 = family === 'seedance25';
   const isSeedance25Gz = family === 'seedance25gz';
+  const isSeedance25Ar = family === 'seedance25ar';
   const isFlux3 = family === 'flux3';
   const isMinimax = family === 'minimax';
   const veoGenerationType = node.videoGenerationType || 'frame';
@@ -1790,7 +1791,7 @@ export function VideoToolbar({
       />
       {modelOptions.length > 1 ? (
         <OptionSegment
-          title="模型"
+          title={isSeedance25Ar ? '时长' : '模型'}
           value={normalizedSettings.model}
           options={modelOptions}
           onChange={(value) => {
@@ -1862,14 +1863,17 @@ export function VideoToolbar({
       {shareRatioDurationRow ? (
         <div className="settings-options-row">
           {flux3Mode === 'enhance' && isFlux3 ? null : ratioSegment}
-          {durationSegment}
+          {!isSeedance25Ar ? durationSegment : null}
         </div>
       ) : (
         <>
           {flux3Mode === 'enhance' && isFlux3 ? null : ratioSegment}
-          {durationSegment}
+          {!isSeedance25Ar ? durationSegment : null}
         </>
       )}
+      {isSeedance25Ar ? (
+        <p className="video-manxue-hint">固定 15s/30s · 9:16/16:9 · 仅支持参考图 · 按次计费</p>
+      ) : null}
       {isFlux3 && flux3Mode !== 'enhance' ? (
         <label className="settings-inline-toggle">
           <input
