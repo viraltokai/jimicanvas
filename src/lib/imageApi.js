@@ -174,6 +174,7 @@ async function buildImageRequest({ prompt, model, ratio, resolution, quality, re
       prompt,
       ratio: ratio || (refs.length > 0 ? 'auto' : DEFAULT_IMAGE_RATIO),
       resolution: resolution || '1k',
+      quality: quality === 'low' ? 'low' : 'medium',
       n: 1,
       generation_mode: 'queue',
       images: refs,

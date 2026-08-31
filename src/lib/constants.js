@@ -1009,6 +1009,7 @@ export const IMAGE_MODEL_LIMITS = {
   'grok-imagine-image-2': {
     resolutions: ['1k', '2k'],
     ratios: GROK_IMAGINE_IMAGE_2_RATIO_OPTIONS.map((option) => option.value),
+    qualities: ['medium', 'low'],
     maxCount: 4,
   },
 };
@@ -1055,6 +1056,12 @@ export function getImageQualityOptions(model) {
   const allowed = getImageModelLimits(model).qualities;
   if (!allowed) return [];
   const allowedSet = new Set(allowed);
+  if (model === 'grok-imagine-image-2') {
+    return [
+      { value: 'medium', label: '中' },
+      { value: 'low', label: '低' },
+    ].filter((option) => allowedSet.has(option.value));
+  }
   return IMAGE_QUALITY_OPTIONS.filter((option) => {
     if (!allowedSet.has(option.value)) return false;
     if (model !== 'gpt-image-1.5') return true;
@@ -1092,7 +1099,9 @@ export function normalizeImageModelSettings({
         ? undefined
         : qualityOptions.some((option) => option.value === quality)
           ? quality
-          : qualityOptions[0]?.value || DEFAULT_IMAGE_QUALITY,
+          : model === 'grok-imagine-image-2'
+            ? (qualityOptions.find((option) => option.value === 'medium')?.value || qualityOptions[0]?.value)
+            : qualityOptions[0]?.value || DEFAULT_IMAGE_QUALITY,
   };
 }
 

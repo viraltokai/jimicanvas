@@ -51,7 +51,8 @@ export function resolveBillingModelName(node, options = {}) {
     }
     if (model === 'grok-imagine-image-2') {
       const resolution = String(node.imageResolution || '1k').toLowerCase();
-      return resolution === '2k' ? 'grok-imagine-image-2-2k' : 'grok-imagine-image-2-1k';
+      const quality = String(node.imageQuality || 'medium').toLowerCase() === 'low' ? 'low' : 'medium';
+      return `grok-imagine-image-2-${resolution === '2k' ? '2k' : '1k'}-${quality}`;
     }
     const resolution = String(node.imageResolution || '1k').toLowerCase();
     return `${model}-${resolution}`;
@@ -151,10 +152,26 @@ export function calculateEstimatedCost(pricingList, node, profile, options = {})
   const billingModel = resolveBillingModelName(node, options);
   if (!billingModel) return 0;
 
-  const p = pricingList.find(item => item.model_name === billingModel);
+  let resolvedBillingModel = billingModel;
+  let p = pricingList.find(item => item.model_name === resolvedBillingModel);
+  if (!p && node.type === 'image' && (node.imageModel || '') === 'grok-imagine-image-2') {
+    const resolution = String(node.imageResolution || '1k').toLowerCase() === '2k' ? '2k' : '1k';
+    const quality = String(node.imageQuality || 'medium').toLowerCase() === 'low' ? 'low' : 'medium';
+    const candidates = [`grok-imagine-image-2-${resolution}-${quality}`];
+    if (quality === 'medium') candidates.push(`grok-imagine-image-2-${resolution}`);
+    candidates.push('grok-imagine-image-2');
+    for (const name of candidates) {
+      const found = pricingList.find((item) => item.model_name === name);
+      if (found) {
+        resolvedBillingModel = name;
+        p = found;
+        break;
+      }
+    }
+  }
   if (!p) return 0;
 
-  const unitPrice = calculateCost(pricingList, billingModel, profile);
+  const unitPrice = calculateCost(pricingList, resolvedBillingModel, profile);
   const pricingType = p.pricing_type || 'standard';
 
   if (node.type === 'image' && (node.imageModel || '') === 'grok-imagine-image-2') {
