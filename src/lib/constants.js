@@ -91,6 +91,7 @@ export const IMAGE_REFERENCE_LIMITS = {
   nanobananapro: 5,
   'gpt-image-2': 16,
   'gpt-image-1.5': 15,
+  'grok-imagine-image-2': 3,
 };
 
 export function getImageReferenceMax(model) {
@@ -903,8 +904,31 @@ export function normalizeVideoModelSettings({
 export const IMAGE_MODEL_OPTIONS = [
   { value: 'gpt-image-2', label: 'gpt image2' },
   { value: 'gpt-image-1.5', label: 'gpt image 1.5' },
+  { value: 'grok-imagine-image-2', label: 'grok image 2' },
   { value: 'nanobanana2', label: 'nano banana2' },
   { value: 'nanobananapro', label: 'nano banana pro' },
+];
+
+export const GROK_IMAGINE_IMAGE_2_RATIO_OPTIONS = [
+  { value: '1:1', label: '1:1' },
+  { value: '16:9', label: '16:9' },
+  { value: '9:16', label: '9:16' },
+  { value: '4:3', label: '4:3' },
+  { value: '3:4', label: '3:4' },
+  { value: '3:2', label: '3:2' },
+  { value: '2:3', label: '2:3' },
+  { value: '2:1', label: '2:1' },
+  { value: '1:2', label: '1:2' },
+  { value: '20:9', label: '20:9' },
+  { value: '19.5:9', label: '19.5:9' },
+  { value: '9:20', label: '9:20' },
+  { value: '9:19.5', label: '9:19.5' },
+  { value: 'auto', label: 'auto' },
+];
+
+export const GROK_IMAGINE_IMAGE_2_RESOLUTION_OPTIONS = [
+  { value: '1k', label: '1K' },
+  { value: '2k', label: '2K' },
 ];
 
 export const IMAGE_RESOLUTION_OPTIONS = [
@@ -982,6 +1006,11 @@ export const IMAGE_MODEL_LIMITS = {
     qualities: IMAGE_QUALITY_OPTIONS.map((option) => option.value),
     maxCount: 5,
   },
+  'grok-imagine-image-2': {
+    resolutions: ['1k', '2k'],
+    ratios: GROK_IMAGINE_IMAGE_2_RATIO_OPTIONS.map((option) => option.value),
+    maxCount: 4,
+  },
 };
 
 export function getImageModelLimits(model) {
@@ -1011,7 +1040,9 @@ export function getImageRatioOptions(model) {
       ? GPT_IMAGE_RATIO_OPTIONS
       : model === 'gpt-image-1.5'
         ? GPT_IMAGE15_RATIO_OPTIONS
-        : IMAGE_RATIO_OPTIONS;
+        : model === 'grok-imagine-image-2'
+          ? GROK_IMAGINE_IMAGE_2_RATIO_OPTIONS
+          : IMAGE_RATIO_OPTIONS;
   return source.filter((option) => allowed.has(option.value));
 }
 

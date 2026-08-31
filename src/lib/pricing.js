@@ -49,6 +49,10 @@ export function resolveBillingModelName(node, options = {}) {
       }
       return 'gpt-image-1.5';
     }
+    if (model === 'grok-imagine-image-2') {
+      const resolution = String(node.imageResolution || '1k').toLowerCase();
+      return resolution === '2k' ? 'grok-imagine-image-2-2k' : 'grok-imagine-image-2-1k';
+    }
     const resolution = String(node.imageResolution || '1k').toLowerCase();
     return `${model}-${resolution}`;
   }
@@ -152,6 +156,19 @@ export function calculateEstimatedCost(pricingList, node, profile, options = {})
 
   const unitPrice = calculateCost(pricingList, billingModel, profile);
   const pricingType = p.pricing_type || 'standard';
+
+  if (node.type === 'image' && (node.imageModel || '') === 'grok-imagine-image-2') {
+    const refCount = Array.isArray(node.referenceImages)
+      ? node.referenceImages.filter((item) => item && (item.url || item.data || item.path)).length
+      : 0;
+    let cost = unitPrice;
+    if (refCount > 0) {
+      const refUnit = calculateCost(pricingList, 'grok-imagine-image-2', profile);
+      cost += refCount * refUnit;
+    }
+    return Math.round(cost * 10000) / 10000;
+  }
+
   const family = node.type === 'video' ? node.videoFamily : '';
   const duration = Number(options.duration || (node.type === 'video' ? node.videoDuration : 0)) || 0;
 

@@ -55,6 +55,7 @@ function requestForm(path, { token, formData }) {
 function imagePathForModel(model) {
   if (model === 'gpt-image-2') return '/api/image/gpt-image-2';
   if (model === 'gpt-image-1.5') return '/api/image/gpt-image-1.5';
+  if (model === 'grok-imagine-image-2') return '/api/image/grok-imagine-image-2';
   if (model === 'nanobananapro') return '/api/image/nanobananapro';
   return '/api/image/nanobanana2';
 }
@@ -166,6 +167,18 @@ async function buildReferenceParts(referenceImages = []) {
 }
 
 async function buildImageRequest({ prompt, model, ratio, resolution, quality, referenceImages = [] }) {
+  if (model === 'grok-imagine-image-2') {
+    const refs = referenceImages.map((image) => normalizeImageUrl(image.url || image.data)).filter(Boolean);
+    return {
+      model: 'grok-imagine-image-2',
+      prompt,
+      ratio: ratio || (refs.length > 0 ? 'auto' : DEFAULT_IMAGE_RATIO),
+      resolution: resolution || '1k',
+      n: 1,
+      generation_mode: 'queue',
+      images: refs,
+    };
+  }
   if (model === 'gpt-image-2' || model === 'gpt-image-1.5') {
     const body = {
       model,
