@@ -136,7 +136,7 @@ export const VIDEO_FAMILY_OPTIONS = [
   { value: 'seedance', label: 'Seedance' },
   { value: 'seedance25', label: 'Seedance 2.5' },
   { value: 'seedance25gz', label: 'Seedance 2.5 官方' },
-  { value: 'seedance25ar', label: 'Seedance 2.5 AR' },
+  { value: 'seedance25ar', label: 'Seedance 2.5 AR 特价' },
   { value: 'flux3', label: 'Flux 3' },
   { value: 'grok', label: 'Grok' },
   { value: 'minimax', label: 'MiniMax H3' },
