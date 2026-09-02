@@ -22,6 +22,7 @@ import { RechargeModal } from './components/RechargeModal';
 import { Topbar } from './components/Topbar';
 import { WorkflowTemplateModal } from './components/WorkflowTemplateModal';
 import { useTheme } from './hooks/useTheme';
+import { usePageLoading } from './lib/global-loading.js';
 import JimicoinIcon from './components/JimicoinIcon';
 import { navigateToCanvasHome } from './lib/appNavigation';
 import { normalizeCanvasBackground } from './lib/canvasBackground';
@@ -1009,6 +1010,7 @@ function App() {
   const activeCanvas = documents.find((doc) => doc.id === activeCanvasId) || documents[0];
   const canvasBackground = normalizeCanvasBackground(activeCanvas?.background);
   const canvasReady = !needsCloudHydrate || hydrationDone;
+  usePageLoading(!canvasReady, '正在同步画布…');
   const nodes = canvasReady ? activeCanvas?.nodes || [] : [];
   const connections = activeCanvas?.connections || [];
   const primarySelectedNodeId =
@@ -4277,13 +4279,6 @@ function App() {
           onDragLeave={handleStageDragLeave}
           onDrop={handleStageDrop}
         >
-          {!canvasReady ? (
-            <div className="canvas-hydrate-overlay" aria-live="polite" aria-busy="true">
-              <Loader2 size={28} className="spin-icon" />
-              <span>正在同步画布…</span>
-            </div>
-          ) : null}
-
           {isStageDragOver ? (
             <div className="stage-file-drop-hint" aria-hidden="true">
               <Upload size={28} strokeWidth={1.5} />

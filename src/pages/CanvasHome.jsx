@@ -45,6 +45,7 @@ import {
 import { CANVAS_TUTORIAL_URL } from '../lib/constants';
 import { getInboxUnreadCount } from '../lib/inboxApi';
 import { getStoredChatToken, isBackendInCooldown } from '../lib/jimiaigoApi';
+import { usePageLoading } from '../lib/global-loading.js';
 import { fetchSiteConfig, getDefaultSiteSettings } from '../lib/siteApi';
 import {
   clearAuthToken,
@@ -372,6 +373,8 @@ export function CanvasHome() {
     () => projects.slice(0, RECENT_PROJECT_LIMIT),
     [projects]
   );
+
+  usePageLoading(projectsLoading && projects.length === 0, '加载项目…');
 
   const features = useMemo(
     () => [
@@ -824,11 +827,11 @@ export function CanvasHome() {
           </div>
 
           <div className={`canvas-home-projects-body${projectsLoading || projectsSaving ? ' is-loading' : ''}`}>
-            {(projectsLoading || projectsSaving) && (
+            {projectsSaving ? (
               <div className="canvas-home-loading">
                 <Loader2 size={24} className="spin" />
               </div>
-            )}
+            ) : null}
             <div className="canvas-home-projects-grid">
               <button type="button" className="canvas-home-project-card create-card" onClick={handleStartCreate}>
                 <div className="canvas-home-project-cover create-cover">

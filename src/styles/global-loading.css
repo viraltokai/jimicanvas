@@ -1,0 +1,97 @@
+.jimi-global-loading {
+  --jimi-gl-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --jimi-gl-reveal-dim: hsla(0, 0%, 100%, 0.22);
+  --jimi-gl-vignette: radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.07), transparent 50%);
+
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  background: var(--app-root-bg);
+  color: var(--text-primary);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.4s var(--jimi-gl-ease),
+    visibility 0.4s var(--jimi-gl-ease),
+    background-color 0.3s ease,
+    color 0.3s ease;
+}
+
+[data-theme='light'] .jimi-global-loading {
+  --jimi-gl-reveal-dim: rgba(0, 0, 0, 0.12);
+  --jimi-gl-vignette: radial-gradient(circle at 50% 42%, rgba(0, 0, 0, 0.05), transparent 50%);
+}
+
+.jimi-global-loading--active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.jimi-global-loading__vignette {
+  position: absolute;
+  inset: 0;
+  background: var(--jimi-gl-vignette);
+  pointer-events: none;
+}
+
+.jimi-reveal-loader {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font: 900 clamp(2rem, 10vw, 4.5rem) Baskerville, 'Palatino Linotype', Palatino, Georgia, serif;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: var(--jimi-gl-reveal-dim);
+}
+
+.jimi-reveal-loader::before {
+  content: attr(data-content);
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+  max-width: 0;
+  color: var(--text-primary);
+  white-space: nowrap;
+  animation: jimi-reveal-loading 2.8s ease-in-out infinite;
+}
+
+@keyframes jimi-reveal-loading {
+  0% {
+    max-width: 0;
+  }
+  42% {
+    max-width: 100%;
+  }
+  58% {
+    max-width: 100%;
+  }
+  100% {
+    max-width: 0;
+  }
+}
+
+.jimi-global-loading__message {
+  position: relative;
+  z-index: 1;
+  max-width: 20rem;
+  text-align: center;
+  font-size: 0.75rem;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jimi-reveal-loader::before {
+    animation: none;
+    max-width: 100%;
+  }
+}

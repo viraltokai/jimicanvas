@@ -3,6 +3,7 @@ import {
   DEFAULT_CHAT_API_URL,
   JIMIAIGO_TOKEN_STORAGE_KEY,
 } from './constants';
+import { hideGlobalLoading, showGlobalLoading } from './global-loading.js';
 
 export const API_SUCCESS_CODE = 20000;
 export const LOGIN_AGAIN_CODE = 20001;
@@ -201,24 +202,32 @@ export async function requestJimiaigo(path, options = {}) {
     fallback = '请求失败',
     dataOnly = true,
     enrichError,
+    globalLoading = false,
     ...fetchOptions
   } = options;
 
-  const { response, rawText, parsed } = await fetchJimiaigo(path, fetchOptions);
+  const loadingMessage = typeof globalLoading === 'string' ? globalLoading : '加载中';
+  if (globalLoading) showGlobalLoading(loadingMessage);
 
   try {
-    assertJimiaigoSuccess(response, parsed, { fallback, rawText });
-  } catch (error) {
-    enrichError?.(error, parsed);
-    if (!response.ok && response.status >= 500) {
-      markBackendFailure(error);
-    }
-    throw error;
-  }
+    const { response, rawText, parsed } = await fetchJimiaigo(path, fetchOptions);
 
-  markBackendSuccess();
-  if (dataOnly) return parsed?.data ?? parsed;
-  return parsed;
+    try {
+      assertJimiaigoSuccess(response, parsed, { fallback, rawText });
+    } catch (error) {
+      enrichError?.(error, parsed);
+      if (!response.ok && response.status >= 500) {
+        markBackendFailure(error);
+      }
+      throw error;
+    }
+
+    markBackendSuccess();
+    if (dataOnly) return parsed?.data ?? parsed;
+    return parsed;
+  } finally {
+    if (globalLoading) hideGlobalLoading();
+  }
 }
 
 /** multipart / FormData 上传 */
