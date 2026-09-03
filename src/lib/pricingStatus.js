@@ -30,8 +30,10 @@ export function isPricedModelActive(modelName) {
   return MODEL_ACTIVE_MAP[key] !== false;
 }
 
-/** 画布图片生成走队列，看异步键 gpt-image-2-4k，不看 -sync。 */
+/** 画布图片生成走队列；GPT-Image-2 价目/分流按 low/medium/high，分辨率选项始终展示。 */
 export function isResolutionEnabled(baseModel, resolution, sync = false) {
+  const base = String(baseModel || '').toLowerCase().trim();
+  if (base === 'gpt-image-2') return true;
   const res = String(resolution || '').toLowerCase().trim();
   if (!baseModel || !res) return true;
   const asyncName = `${baseModel}-${res}`;
@@ -41,6 +43,20 @@ export function isResolutionEnabled(baseModel, resolution, sync = false) {
     return isPricedModelActive(asyncName);
   }
   return isPricedModelActive(asyncName);
+}
+
+export function isGptImage2QualityEnabled(quality, resolution) {
+  const q = String(quality || '').trim().toLowerCase();
+  const res = String(resolution || '1k').toLowerCase().trim();
+  let asyncName = 'gpt-image-2-low';
+  if (q === 'low' || q === 'medium' || q === 'high') {
+    asyncName = `gpt-image-2-${q}`;
+  } else if (res === '4k') {
+    asyncName = 'gpt-image-2-high';
+  } else if (res === '2k') {
+    asyncName = 'gpt-image-2-medium';
+  }
+  return isPricedModelActive(asyncName) || isPricedModelActive('gpt-image-2');
 }
 
 export function filterActiveResolutions(baseModel, options, sync = false) {

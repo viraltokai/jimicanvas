@@ -1,4 +1,4 @@
-import { filterActiveResolutions, isPricedModelActive, isProductPricingActive } from './pricingStatus';
+import { filterActiveResolutions, isPricedModelActive, isProductPricingActive, isGptImage2QualityEnabled } from './pricingStatus';
 
 /** 画布有改动后，延迟多久再上传到云端（防抖，减少频繁保存） */
 export const CLOUD_SYNC_DEBOUNCE_MS = 3000;
@@ -1064,6 +1064,17 @@ export function getImageQualityOptions(model) {
   }
   return IMAGE_QUALITY_OPTIONS.filter((option) => {
     if (!allowedSet.has(option.value)) return false;
+    if (model === 'gpt-image-2') {
+      if (option.value === 'auto') {
+        return (
+          isGptImage2QualityEnabled('low') ||
+          isGptImage2QualityEnabled('medium') ||
+          isGptImage2QualityEnabled('high') ||
+          isPricedModelActive('gpt-image-2')
+        );
+      }
+      return isGptImage2QualityEnabled(option.value);
+    }
     if (model !== 'gpt-image-1.5') return true;
     if (option.value === 'auto') return isPricedModelActive('gpt-image-1.5');
     return isPricedModelActive(`gpt-image-1.5-${option.value}`);

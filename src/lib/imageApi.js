@@ -190,7 +190,7 @@ async function buildImageRequest({ prompt, model, ratio, resolution, quality, re
       generation_mode: 'queue',
       images: referenceImages.map((image) => normalizeImageUrl(image.url || image.data)).filter(Boolean),
     };
-    // 1.5 按 quality 计费，无 resolution；2 仍传 1k/2k/4k
+    // gpt-image-2：resolution 仍传给后端做尺寸；计费/分流看 quality（low/medium/high）
     if (model === 'gpt-image-2') {
       body.resolution = resolution || DEFAULT_IMAGE_RESOLUTION;
     }
