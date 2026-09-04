@@ -57,6 +57,8 @@ import {
   SEEDANCE25_REF_VIDEO_MAX,
   SEEDANCE25_REF_AUDIO_MAX,
   SEEDANCE25_GZ_REF_VIDEO_MAX,
+  WAN30_REF_VIDEO_MAX,
+  WAN30_REF_AUDIO_MAX,
   FLUX3_MODE_OPTIONS,
   FLUX3_REF_KEYFRAME_MAX,
   getImageReferenceMax,
@@ -1452,6 +1454,7 @@ export function VideoToolbar({
   const isSeedance25Ar = family === 'seedance25ar';
   const isFlux3 = family === 'flux3';
   const isMinimax = family === 'minimax';
+  const isWan30 = family === 'wan30';
   const veoGenerationType = node.videoGenerationType || 'frame';
   const flux3Mode = node.videoFlux3Mode || 't2v';
   const showVeoReferenceImages = isVeo && veoGenerationType === 'reference';
@@ -1467,8 +1470,13 @@ export function VideoToolbar({
   const showFlux3Frames = isFlux3 && flux3Mode === 'flf';
   const showFlux3ReferenceImages = isFlux3 && (flux3Mode === 'i2v' || flux3Mode === 'keyframes');
   const showGenericReferenceImages = !isVeo && !isSeedance && !isFlux3 && !(isSeedance25Gz && hasSeedance25GzFrames);
-  const showSeedance25Media = isSeedance25 || isSeedance25Gz;
-  const seedance25VideoMax = isSeedance25Gz ? SEEDANCE25_GZ_REF_VIDEO_MAX : SEEDANCE25_REF_VIDEO_MAX;
+  const showSeedance25Media = isSeedance25 || isSeedance25Gz || isWan30;
+  const seedance25VideoMax = isWan30
+    ? WAN30_REF_VIDEO_MAX
+    : isSeedance25Gz
+      ? SEEDANCE25_GZ_REF_VIDEO_MAX
+      : SEEDANCE25_REF_VIDEO_MAX;
+  const seedance25AudioMax = isWan30 ? WAN30_REF_AUDIO_MAX : SEEDANCE25_REF_AUDIO_MAX;
   const familyOptions = getVisibleVideoFamilyOptions(soraVisibility);
   const modelOptions = getVideoModelOptionsForVisibility(family, soraVisibility);
   const model = modelOptions.some((option) => option.value === node.videoModel)
@@ -1618,7 +1626,7 @@ export function VideoToolbar({
       patch.videoLastFrame = null;
     }
 
-    if (nextFamily !== 'seedance' && nextFamily !== 'seedance25' && nextFamily !== 'seedance25gz') {
+    if (nextFamily !== 'seedance' && nextFamily !== 'seedance25' && nextFamily !== 'seedance25gz' && nextFamily !== 'wan30') {
       patch.videoReferenceVideos = [];
       patch.videoReferenceAudios = [];
     }
@@ -2090,7 +2098,7 @@ export function VideoToolbar({
                   icon={Headphones}
                   mediaType="audio"
                   items={referenceAudios}
-                  maxCount={SEEDANCE25_REF_AUDIO_MAX}
+                  maxCount={seedance25AudioMax}
                   disabled={isRunning}
                   isRunning={isRunning}
                   onPick={() => onOpenAssetLibrary(node.id, 's25-ref-audio')}
@@ -2553,7 +2561,7 @@ export function VideoToolbar({
             icon={Headphones}
             mediaType="audio"
             items={referenceAudios}
-            maxCount={SEEDANCE25_REF_AUDIO_MAX}
+            maxCount={seedance25AudioMax}
             disabled={isRunning}
             isRunning={isRunning}
             onPick={() => onOpenAssetLibrary(node.id, 's25-ref-audio')}

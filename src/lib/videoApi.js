@@ -692,6 +692,49 @@ async function createSeedance933Task({
   return { taskId: String(taskId), provider: 'seedance-933' };
 }
 
+async function createWan30Task({
+  token,
+  prompt,
+  settings,
+  referenceImages,
+  seedanceInputs = {},
+}) {
+  const images = buildReferenceImageUrls(referenceImages).slice(0, 10);
+  const videos = (seedanceInputs.referenceVideos || []).map(pickPublicMediaUrl).filter(Boolean).slice(0, 5);
+  const audios = (seedanceInputs.referenceAudios || []).map(pickPublicMediaUrl).filter(Boolean).slice(0, 5);
+  const resolutionRaw = String(settings.resolution || '480p').toLowerCase();
+  const resolution = resolutionRaw.includes('1080')
+    ? '1080P'
+    : resolutionRaw.includes('720')
+      ? '720P'
+      : '480P';
+  const allowedRatios = ['16:9', '9:16', '1:1', '4:3', '3:4'];
+  const ratio = allowedRatios.includes(settings.ratio) ? settings.ratio : '16:9';
+  const duration = Math.min(30, Math.max(4, Number(settings.duration) || 4));
+
+  const data = await requestJson('/api/video/wan30/videos', {
+    token,
+    method: 'POST',
+    body: {
+      model: 'wan3.0',
+      prompt,
+      duration,
+      aspect_ratio: ratio,
+      resolution,
+      reference_images: images,
+      reference_videos: videos,
+      reference_audios: audios,
+    },
+  });
+
+  const taskId = extractTaskId(data) || data?.task_id;
+  if (!taskId) {
+    throw new Error('Wan 3.0 任务创建成功，但未返回任务 ID');
+  }
+
+  return { taskId: String(taskId), provider: 'wan3.0' };
+}
+
 export async function createVideoGenerationTask({
   token,
   prompt,
@@ -724,6 +767,8 @@ export async function createVideoGenerationTask({
       return createGrokTask({ token, prompt, settings, referenceImages });
     case 'minimax':
       return createMiniMaxH3Task({ token, prompt, settings, referenceImages, veoFrames });
+    case 'wan30':
+      return createWan30Task({ token, prompt, settings, referenceImages, seedanceInputs });
     case 'sora':
     default:
       return createSoraTask({ token, prompt, settings, referenceImages });

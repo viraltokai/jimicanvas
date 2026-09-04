@@ -49,6 +49,8 @@ import {
   SEEDANCE25_REF_VIDEO_MAX,
   SEEDANCE25_REF_AUDIO_MAX,
   SEEDANCE25_GZ_REF_VIDEO_MAX,
+  WAN30_REF_VIDEO_MAX,
+  WAN30_REF_AUDIO_MAX,
   VIDEO_GENERIC_REFERENCE_MAX,
   getImageReferenceMax,
 } from './lib/constants';
@@ -2755,8 +2757,13 @@ function App() {
     }
     if (pickMode === 's25-ref-video') {
       const currentCount = Array.isArray(node?.videoReferenceVideos) ? node.videoReferenceVideos.length : 0;
+      const family = inferVideoFamily(node);
       const videoMax =
-        inferVideoFamily(node) === 'seedance25gz' ? SEEDANCE25_GZ_REF_VIDEO_MAX : SEEDANCE25_REF_VIDEO_MAX;
+        family === 'wan30'
+          ? WAN30_REF_VIDEO_MAX
+          : family === 'seedance25gz'
+            ? SEEDANCE25_GZ_REF_VIDEO_MAX
+            : SEEDANCE25_REF_VIDEO_MAX;
       return {
         maxCount: Math.max(1, videoMax - currentCount),
         title: '资产库',
@@ -2765,10 +2772,12 @@ function App() {
     }
     if (pickMode === 's25-ref-audio') {
       const currentCount = Array.isArray(node?.videoReferenceAudios) ? node.videoReferenceAudios.length : 0;
+      const audioMax =
+        inferVideoFamily(node) === 'wan30' ? WAN30_REF_AUDIO_MAX : SEEDANCE25_REF_AUDIO_MAX;
       return {
-        maxCount: Math.max(1, SEEDANCE25_REF_AUDIO_MAX - currentCount),
+        maxCount: Math.max(1, audioMax - currentCount),
         title: '资产库',
-        subtitle: `选择参考音频（最多 ${SEEDANCE25_REF_AUDIO_MAX} 个）`,
+        subtitle: `选择参考音频（最多 ${audioMax} 个）`,
       };
     }
     if (pickMode === 'veo-reference') {
@@ -2948,8 +2957,13 @@ function App() {
     }
     if (pickMode === 's25-ref-video') {
       const current = Array.isArray(node.videoReferenceVideos) ? node.videoReferenceVideos : [];
+      const family = inferVideoFamily(node);
       const videoMax =
-        inferVideoFamily(node) === 'seedance25gz' ? SEEDANCE25_GZ_REF_VIDEO_MAX : SEEDANCE25_REF_VIDEO_MAX;
+        family === 'wan30'
+          ? WAN30_REF_VIDEO_MAX
+          : family === 'seedance25gz'
+            ? SEEDANCE25_GZ_REF_VIDEO_MAX
+            : SEEDANCE25_REF_VIDEO_MAX;
       return {
         ...node,
         videoReferenceVideos: [...current, ...normalized].slice(0, Math.max(videoMax, 1)),
@@ -2958,9 +2972,11 @@ function App() {
     }
     if (pickMode === 's25-ref-audio') {
       const current = Array.isArray(node.videoReferenceAudios) ? node.videoReferenceAudios : [];
+      const audioMax =
+        inferVideoFamily(node) === 'wan30' ? WAN30_REF_AUDIO_MAX : SEEDANCE25_REF_AUDIO_MAX;
       return {
         ...node,
-        videoReferenceAudios: [...current, ...normalized].slice(0, SEEDANCE25_REF_AUDIO_MAX),
+        videoReferenceAudios: [...current, ...normalized].slice(0, audioMax),
         status: 'idle',
       };
     }

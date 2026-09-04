@@ -72,6 +72,10 @@ export const SEEDANCE25_GZ_MODEL = 'seedance2.5-gz';
 export const SEEDANCE25_AR_MD_MODEL = 'seedance2.5-md';
 export const SEEDANCE25_AR_30S_MODEL = 'seedance2.5-30s';
 export const SEEDANCE25_GZ_REF_VIDEO_MAX = 10;
+export const WAN30_MODEL = 'wan3.0';
+export const WAN30_REF_IMAGE_MAX = 10;
+export const WAN30_REF_VIDEO_MAX = 5;
+export const WAN30_REF_AUDIO_MAX = 5;
 export const FLUX3_MODEL = 'flux-3-draft';
 export const FLUX3_MODE_OPTIONS = [
   { value: 't2v', label: '文生' },
@@ -140,6 +144,7 @@ export const VIDEO_FAMILY_OPTIONS = [
   { value: 'flux3', label: 'Flux 3' },
   { value: 'grok', label: 'Grok' },
   { value: 'minimax', label: 'MiniMax H3' },
+  { value: 'wan30', label: 'Wan 3.0' },
 ];
 
 export const VIDEO_COUNT_OPTIONS = [
@@ -448,6 +453,31 @@ export const VIDEO_FAMILY_CONFIG = {
     resolutionKey: 'size',
     ratioKey: 'ratio',
   },
+  wan30: {
+    provider: 'wan3.0',
+    models: [{ value: WAN30_MODEL, label: 'Wan 3.0' }],
+    resolutions: [
+      { value: '480p', label: '480p' },
+      { value: '720p', label: '720p' },
+      { value: '1080p', label: '1080p' },
+    ],
+    ratios: [
+      { value: '16:9', label: '16:9' },
+      { value: '9:16', label: '9:16' },
+      { value: '1:1', label: '1:1' },
+      { value: '4:3', label: '4:3' },
+      { value: '3:4', label: '3:4' },
+    ],
+    durations: Array.from({ length: 27 }, (_, i) => {
+      const value = String(i + 4);
+      return { value, label: `${value} 秒` };
+    }),
+    defaultDuration: '4',
+    defaultOrientation: 'landscape',
+    maxCount: 1,
+    resolutionKey: 'resolution',
+    ratioKey: 'ratio',
+  },
 };
 
 export const MINIMAX_H3_MODEL = 'minimax-h3';
@@ -612,6 +642,26 @@ export function isFlux3Model(model = '') {
   );
 }
 
+export function isWan30Model(model = '') {
+  const value = String(model).toLowerCase().replace(/_/g, '-');
+  return (
+    value === WAN30_MODEL ||
+    value === 'wan3' ||
+    value === 'wan30' ||
+    value === 'wan-3.0' ||
+    value.startsWith('wan3.0-') ||
+    value.startsWith('wan30-') ||
+    value.includes('wan3.0')
+  );
+}
+
+export function buildWan30BillingModel(resolution = '480p') {
+  const value = String(resolution || '').toLowerCase();
+  if (value.includes('1080')) return 'wan3.0-1080p';
+  if (value.includes('720')) return 'wan3.0-720p';
+  return 'wan3.0-480p';
+}
+
 export function mapFlux3ModeToApiModel(mode = DEFAULT_FLUX3_MODE) {
   if (mode === 'i2v') return 'flux-3-i2v-draft';
   if (mode === 'flf') return 'flux-3-flf-draft';
@@ -633,6 +683,7 @@ export function inferVideoFamily(node = {}) {
 
   const model = String(node.videoModel || '').toLowerCase();
   if (isFlux3Model(model)) return 'flux3';
+  if (isWan30Model(model)) return 'wan30';
   if (model.includes('minimax') || model.includes('hailuo') || isMiniMaxH3Model(model)) return 'minimax';
   if (model.includes('grok')) return 'grok';
   if (isSeedance25ArModel(model)) return 'seedance25ar';
@@ -661,6 +712,7 @@ export function getVideoReferenceImageMax(node = {}) {
   if (family === 'omni') return OMNI_REFERENCE_IMAGE_MAX;
   if (family === 'grok') return getGrokReferenceImageMax(node.videoModel);
   if (family === 'minimax') return MINIMAX_REFERENCE_IMAGE_MAX;
+  if (family === 'wan30') return WAN30_REF_IMAGE_MAX;
   return VIDEO_GENERIC_REFERENCE_MAX;
 }
 

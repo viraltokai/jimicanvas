@@ -3,6 +3,7 @@ import {
   GROK_15_MODEL,
   GROK_MAX_MODEL,
   GROK_VIDEO3_MODEL,
+  buildWan30BillingModel,
   isGrok10sModel,
   isGrok15Model,
   isGrokMaxModel,
@@ -148,6 +149,9 @@ export function resolveBillingModelName(node, options = {}) {
     if (family === 'minimax') {
       return 'minimax-h3';
     }
+    if (family === 'wan30') {
+      return buildWan30BillingModel(resolution || node.videoResolution || '480p');
+    }
   }
 
   if (node.type === 'audio') {
@@ -213,8 +217,14 @@ export function calculateEstimatedCost(pricingList, node, profile, options = {})
   const family = node.type === 'video' ? node.videoFamily : '';
   const duration = Number(options.duration || (node.type === 'video' ? node.videoDuration : 0)) || 0;
 
-  // Seedance 2.5 / Grok / Flux 3 等按秒模型：强制单价 × 时长（不依赖 pricing_type 配置）
-  if (family === 'seedance25' || family === 'seedance25gz' || family === 'grok' || family === 'flux3') {
+  // Seedance 2.5 / Grok / Flux 3 / Wan 3.0 等按秒模型：强制单价 × 时长（不依赖 pricing_type 配置）
+  if (
+    family === 'seedance25' ||
+    family === 'seedance25gz' ||
+    family === 'grok' ||
+    family === 'flux3' ||
+    family === 'wan30'
+  ) {
     if (duration > 0) {
       return Math.round(unitPrice * duration * 10000) / 10000;
     }

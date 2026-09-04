@@ -425,7 +425,7 @@ export async function executeVideoGeneration(
               }
             : {},
         seedanceInputs:
-          family === 'seedance' || family === 'seedance25' || family === 'seedance25gz'
+          family === 'seedance' || family === 'seedance25' || family === 'seedance25gz' || family === 'wan30'
             ? {
                 firstFrame: family === 'seedance' || family === 'seedance25gz' ? node.videoFirstFrame : undefined,
                 lastFrame: family === 'seedance' || family === 'seedance25gz' ? node.videoLastFrame : undefined,
