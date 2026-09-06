@@ -132,7 +132,7 @@ export const VEO_GENERATION_TYPE_OPTIONS = [
   { value: 'reference', label: '参考图' },
 ];
 
-/** 可选视频家族（Sora 是否展示由 admin 线路开关控制） */
+/** 可选视频家族（Sora 已下线，见 SORA_FAMILY_ENABLED） */
 export const VIDEO_FAMILY_OPTIONS = [
   { value: 'sora', label: 'Sora' },
   { value: 'veo', label: 'VEO' },
@@ -145,6 +145,36 @@ export const VIDEO_FAMILY_OPTIONS = [
   { value: 'grok', label: 'Grok' },
   { value: 'minimax', label: 'MiniMax H3' },
   { value: 'wan30', label: 'Wan 3.0' },
+];
+
+/** 系列选择分组：组内可用短标签，避免平铺过长 */
+export const VIDEO_FAMILY_GROUPS = [
+  {
+    id: 'seedance',
+    label: 'Seedance',
+    families: ['seedance', 'seedance25', 'seedance25gz', 'seedance25ar'],
+    shortLabels: {
+      seedance: '2.0',
+      seedance25: '2.5',
+      seedance25gz: '官方',
+      seedance25ar: 'AR 特价',
+    },
+  },
+  {
+    id: 'google',
+    label: 'Google',
+    families: ['veo', 'omni'],
+  },
+  {
+    id: 'more',
+    label: '其他',
+    families: ['flux3', 'grok', 'minimax', 'wan30'],
+  },
+  {
+    id: 'sora',
+    label: 'Sora',
+    families: ['sora'],
+  },
 ];
 
 export const VIDEO_COUNT_OPTIONS = [
@@ -721,12 +751,38 @@ export function getVideoFamilyConfig(family = DEFAULT_VIDEO_FAMILY) {
 }
 
 export function getVideoModelOptions(family) {
-  return getVideoFamilyConfig(family).models;
+  const models = getVideoFamilyConfig(family).models || [];
+  if (family === 'seedance' && !SEEDANCE_933_ENABLED) {
+    return models.filter((model) => !isSeedance933Model(model.value));
+  }
+  return models;
 }
 
 export function getVisibleVideoFamilyOptions(soraVisibility) {
   const showSora = isSoraFamilyVisible(soraVisibility);
   return VIDEO_FAMILY_OPTIONS.filter((item) => item.value !== 'sora' || showSora);
+}
+
+export function getGroupedVideoFamilyOptions(soraVisibility) {
+  const visibleOptions = getVisibleVideoFamilyOptions(soraVisibility);
+  const byValue = new Map(visibleOptions.map((option) => [option.value, option]));
+
+  return VIDEO_FAMILY_GROUPS.map((group) => {
+    const options = group.families
+      .map((familyId) => {
+        const option = byValue.get(familyId);
+        if (!option) return null;
+        const shortLabel = group.shortLabels?.[familyId];
+        return shortLabel ? { ...option, label: shortLabel, fullLabel: option.label } : option;
+      })
+      .filter(Boolean);
+
+    return {
+      id: group.id,
+      label: group.label,
+      options,
+    };
+  }).filter((group) => group.options.length > 0);
 }
 
 export function getVisibleSoraModelOptions(soraVisibility) {
@@ -747,11 +803,17 @@ export function getVideoModelOptionsForVisibility(family, soraVisibility) {
 }
 
 export const DEFAULT_SORA_ROUTE_VISIBILITY = {
-  route1_visible: true,
-  route3_visible: true,
-  route4_visible: true,
+  route1_visible: false,
+  route3_visible: false,
+  route4_visible: false,
   route6_visible: false,
 };
+
+/** 产品开关：Sora 系列整体下线（前后台线路开关不再单独打开） */
+export const SORA_FAMILY_ENABLED = false;
+
+/** 产品开关：Seedance 2.0 933 通道下线 */
+export const SEEDANCE_933_ENABLED = false;
 
 export function normalizeSoraRouteVisibility(raw) {
   return {
@@ -764,6 +826,7 @@ export function normalizeSoraRouteVisibility(raw) {
 
 /** canvas：Sora 特价/稳定版对应 admin route1 / route3（route4 仅控制 web 端 openai_sora-2） */
 export function isSoraFamilyVisible(soraVisibility) {
+  if (!SORA_FAMILY_ENABLED) return false;
   const visibility = normalizeSoraRouteVisibility(soraVisibility);
   return visibility.route1_visible || visibility.route3_visible;
 }

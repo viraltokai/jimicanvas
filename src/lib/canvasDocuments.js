@@ -40,7 +40,12 @@ export function documentsToProjects(documents) {
       id: doc.id,
       name: doc.name,
       updatedAt: doc.updatedAt,
-      nodeCount: doc.nodes.length,
+      nodeCount:
+        Number.isFinite(Number(doc.nodeCount)) && Number(doc.nodeCount) >= 0
+          ? Number(doc.nodeCount)
+          : Array.isArray(doc.nodes)
+            ? doc.nodes.length
+            : 0,
     }))
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }

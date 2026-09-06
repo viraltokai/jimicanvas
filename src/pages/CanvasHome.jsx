@@ -4,7 +4,6 @@ import {
   ChevronDown,
   Crown,
   CloudUpload,
-  Grid3x3,
   Image,
   Loader2,
   LogOut,
@@ -12,7 +11,6 @@ import {
   Moon,
   MoreHorizontal,
   Plus,
-  Sparkles,
   Sun,
   Video,
   Wallet,
@@ -58,20 +56,23 @@ const RECENT_PROJECT_LIMIT = 6;
 
 const COPY = {
   pageTitle: '无限画布',
-  heroBadge: 'JimiCanvas 工作台',
-  heroTitle: '在无限画布上串联你的 AI 创作流程',
-  heroSubtitle:
-    '自由排布图片、视频与文本节点，在同一画布内完成灵感整理、AI 生图与生视频，并自动同步到云端。',
+  heroBrand: 'JimiCanvas',
+  heroTitle: '无限画布上的 AI 创作台',
+  heroSubtitle: '节点编排图片与视频，一键生成并自动同步云端。',
   startCreateButton: '开始创作',
   tutorialLink: '使用教程',
-  workflowTemplatesButton: '预设工作流模版',
+  workflowTemplatesButton: '工作流模版',
   workflowTemplatesDesc: '文生图、图生视频、图片/视频反推提示词等常用流程',
   createCardDesc: '新建空白画布，开启新的创作',
   createCardAction: '立即创建',
+  templateCardDesc: '从常用流程一键起步',
+  templateCardAction: '选择模版',
   recentProjectsTitle: '最近项目',
   viewAllProjects: '查看全部项目',
   allProjectsTitle: '全部画布项目',
-  emptyProjects: '还没有画布项目，点击开始创作创建第一个',
+  emptyProjects: '还没有画布项目',
+  emptyProjectsHint: '从空白画布或工作流模版开始。',
+  projectsLoadingLabel: '加载项目',
   openProject: '打开',
   actionOpen: '打开',
   actionRename: '重命名',
@@ -89,25 +90,25 @@ const COPY = {
   confirm: '确定',
   cancel: '取消',
   closeDialog: '关闭',
-  featuresTitle: '核心能力',
+  featuresTitle: '能在画布上完成',
   login: '登录',
   logout: '退出登录',
   features: {
     infinite: {
       title: '无限画布',
-      desc: '自由缩放与平移，节点随意摆放，适合分镜、素材墙与多方案对比。',
+      desc: '自由缩放平移，适合分镜与多方案对比。',
     },
     aiImage: {
       title: 'AI 生图',
-      desc: '在画布节点内直接调用生图模型，结果即时落到节点上。',
+      desc: '节点内直接出图，结果落在画布上。',
     },
     aiVideo: {
       title: 'AI 生视频',
-      desc: '支持 Seedance、VEO、Omni 等多线路视频生成，与图片节点协同编排。',
+      desc: 'Seedance、VEO、Omni 等线路协同编排。',
     },
     cloud: {
       title: '云端同步',
-      desc: '画布内容自动保存到云端，换设备也能继续创作。',
+      desc: '自动保存，换设备继续创作。',
     },
   },
 };
@@ -340,6 +341,65 @@ function ProjectMenu({ project, onAction }) {
   );
 }
 
+function hashSeed(value) {
+  const text = String(value || 'canvas');
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function ProjectCover({ projectId, name }) {
+  const seed = hashSeed(`${projectId}:${name}`);
+  const nodes = Array.from({ length: 4 + (seed % 3) }, (_, index) => {
+    const shift = seed >> (index * 4);
+    return {
+      left: 8 + (shift % 62),
+      top: 12 + ((shift >> 3) % 48),
+      width: 16 + ((shift >> 6) % 24),
+      height: 12 + ((shift >> 9) % 18),
+      tone: index % 3,
+    };
+  });
+
+  return (
+    <div className="canvas-home-project-cover" aria-hidden="true">
+      <div className="canvas-home-project-cover-grid" />
+      <div className="canvas-home-project-cover-stage">
+        {nodes.map((node, index) => (
+          <span
+            key={index}
+            className={`canvas-home-project-cover-node tone-${node.tone}`}
+            style={{
+              left: `${node.left}%`,
+              top: `${node.top}%`,
+              width: `${node.width}%`,
+              height: `${node.height}%`,
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProjectSkeletonCard() {
+  return (
+    <div className="canvas-home-project-card is-skeleton" aria-hidden="true">
+      <div className="canvas-home-project-cover is-skeleton" />
+      <div className="canvas-home-project-body">
+        <span className="canvas-home-skeleton-line is-title" />
+        <span className="canvas-home-skeleton-line is-meta" />
+      </div>
+      <div className="canvas-home-project-action">
+        <span className="canvas-home-skeleton-line is-action" />
+      </div>
+    </div>
+  );
+}
+
 function openProjectFromCard(event, project, onOpen) {
   if (event.target.closest('.canvas-home-project-menu')) return;
   onOpen(project);
@@ -400,6 +460,7 @@ export function CanvasHome() {
       name: item.name,
       nodes: [],
       connections: [],
+      nodeCount: Number(item.node_count) || 0,
       updatedAt: toTimestampMillis(item.updated_at) || Date.now(),
     }));
     setRawDocuments(docs);
@@ -705,7 +766,11 @@ export function CanvasHome() {
           <SiteLogo
             url={siteSettings.logoUrl}
             className="canvas-home-logo"
-            fallback={<Sparkles size={20} aria-hidden="true" />}
+            fallback={
+              <span className="canvas-home-brand-mark" aria-hidden="true">
+                <Maximize2 size={18} />
+              </span>
+            }
           />
           <div>
             <strong>{siteSettings.title || COPY.pageTitle}</strong>
@@ -785,29 +850,16 @@ export function CanvasHome() {
       <main className="canvas-home-main">
         <section className="canvas-home-hero">
           <div className="canvas-home-hero-glow" aria-hidden="true" />
-          <div className="canvas-home-hero-shimmer" aria-hidden="true" />
           <div className="canvas-home-hero-inner">
             <div className="canvas-home-hero-content">
-              <div className="canvas-home-hero-badge">
-                <Sparkles size={14} />
-                <span>{COPY.heroBadge}</span>
-              </div>
+              <strong className="canvas-home-hero-brand">{COPY.heroBrand}</strong>
               <h1>{COPY.heroTitle}</h1>
               <p className="canvas-home-hero-subtitle">{COPY.heroSubtitle}</p>
               <div className="canvas-home-hero-actions">
                 <button type="button" className="canvas-home-hero-cta" onClick={handleStartCreate}>
-                  <Sparkles size={16} />
+                  <Plus size={16} />
                   {COPY.startCreateButton}
                 </button>
-                <a
-                  href={CANVAS_TUTORIAL_URL}
-                  className="canvas-home-hero-cta is-secondary"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <BookOpen size={16} />
-                  {COPY.tutorialLink}
-                </a>
               </div>
             </div>
             <div className="canvas-home-hero-visual">
@@ -826,16 +878,20 @@ export function CanvasHome() {
             ) : null}
           </div>
 
-          <div className={`canvas-home-projects-body${projectsLoading || projectsSaving ? ' is-loading' : ''}`}>
+          <div className={`canvas-home-projects-body${projectsSaving ? ' is-saving' : ''}`}>
             {projectsSaving ? (
-              <div className="canvas-home-loading">
-                <Loader2 size={24} className="spin" />
+              <div className="canvas-home-saving-chip" role="status">
+                <Loader2 size={14} className="spin" />
+                <span>保存中</span>
               </div>
             ) : null}
+
             <div className="canvas-home-projects-grid">
               <button type="button" className="canvas-home-project-card create-card" onClick={handleStartCreate}>
                 <div className="canvas-home-project-cover create-cover">
-                  <Plus size={32} />
+                  <span className="canvas-home-project-cover-action">
+                    <Plus size={28} />
+                  </span>
                 </div>
                 <div className="canvas-home-project-body">
                   <h3>{COPY.startCreateButton}</h3>
@@ -846,60 +902,92 @@ export function CanvasHome() {
                 </div>
               </button>
 
-              {recentProjects.map((project) => (
-                <div
-                  key={project.id}
-                  role="button"
-                  tabIndex={0}
-                  className="canvas-home-project-card"
-                  onClick={(event) => openProjectFromCard(event, project, handleOpenProject)}
-                  onKeyDown={(event) => {
-                    if (event.target.closest('.canvas-home-project-menu')) return;
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      handleOpenProject(project);
-                    }
-                  }}
-                >
-                  <ProjectMenu project={project} onAction={handleProjectAction} />
-                  <div className="canvas-home-project-cover">
-                    <Grid3x3 size={32} />
-                  </div>
-                  <div className="canvas-home-project-body">
-                    <h3 title={project.name}>{project.name}</h3>
-                    <p>
-                      {project.nodeCount} 个节点 · {formatProjectTime(project.updatedAt)}
-                    </p>
-                  </div>
-                  <div className="canvas-home-project-action">
-                    <span>{COPY.openProject}</span>
-                  </div>
+              <button
+                type="button"
+                className="canvas-home-project-card template-card"
+                onClick={handleOpenWorkflowTemplates}
+              >
+                <div className="canvas-home-project-cover template-cover">
+                  <span className="canvas-home-project-cover-action">
+                    <Workflow size={26} />
+                  </span>
                 </div>
-              ))}
+                <div className="canvas-home-project-body">
+                  <h3>{COPY.workflowTemplatesButton}</h3>
+                  <p>{COPY.templateCardDesc}</p>
+                </div>
+                <div className="canvas-home-project-action">
+                  <span>{COPY.templateCardAction}</span>
+                </div>
+              </button>
+
+              {projectsLoading && projects.length === 0
+                ? Array.from({ length: 3 }, (_, index) => <ProjectSkeletonCard key={`skeleton-${index}`} />)
+                : null}
+
+              {!projectsLoading
+                ? recentProjects.map((project) => (
+                    <div
+                      key={project.id}
+                      role="button"
+                      tabIndex={0}
+                      className="canvas-home-project-card"
+                      onClick={(event) => openProjectFromCard(event, project, handleOpenProject)}
+                      onKeyDown={(event) => {
+                        if (event.target.closest('.canvas-home-project-menu')) return;
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          handleOpenProject(project);
+                        }
+                      }}
+                    >
+                      <ProjectMenu project={project} onAction={handleProjectAction} />
+                      <ProjectCover projectId={project.id} name={project.name} />
+                      <div className="canvas-home-project-body">
+                        <h3 title={project.name}>{project.name}</h3>
+                        <p>
+                          {project.nodeCount} 个节点 · {formatProjectTime(project.updatedAt)}
+                        </p>
+                      </div>
+                      <div className="canvas-home-project-action">
+                        <span>{COPY.openProject}</span>
+                      </div>
+                    </div>
+                  ))
+                : null}
             </div>
 
             {!projectsLoading && token && recentProjects.length === 0 ? (
-              <p className="canvas-home-empty-hint">{COPY.emptyProjects}</p>
+              <div className="canvas-home-empty">
+                <strong>{COPY.emptyProjects}</strong>
+                <p>{COPY.emptyProjectsHint}</p>
+              </div>
+            ) : null}
+
+            {projectsLoading && projects.length === 0 ? (
+              <span className="sr-only">{COPY.projectsLoadingLabel}</span>
             ) : null}
           </div>
         </section>
 
-        <section className="canvas-home-features">
+        <section className="canvas-home-capabilities">
           <h2>{COPY.featuresTitle}</h2>
-          <div className="canvas-home-features-grid">
+          <ul className="canvas-home-capability-rail">
             {features.map((feature) => {
               const Icon = feature.icon;
               return (
-                <div key={feature.key} className="canvas-home-feature-card">
-                  <div className={`canvas-home-feature-icon ${feature.iconClass}`}>
-                    <Icon size={20} />
+                <li key={feature.key} className="canvas-home-capability-item">
+                  <span className={`canvas-home-capability-icon ${feature.iconClass}`} aria-hidden="true">
+                    <Icon size={18} />
+                  </span>
+                  <div className="canvas-home-capability-copy">
+                    <strong>{feature.title}</strong>
+                    <span>{feature.desc}</span>
                   </div>
-                  <h3>{feature.title}</h3>
-                  <p>{feature.desc}</p>
-                </div>
+                </li>
               );
             })}
-          </div>
+          </ul>
         </section>
       </main>
 
@@ -913,7 +1001,12 @@ export function CanvasHome() {
           >
             <header className="canvas-home-dialog-header">
               <h3>{COPY.allProjectsTitle}</h3>
-              <button type="button" className="icon-mini" onClick={() => setAllProjectsVisible(false)}>
+              <button
+                type="button"
+                className="icon-mini"
+                onClick={() => setAllProjectsVisible(false)}
+                aria-label={COPY.closeDialog}
+              >
                 ×
               </button>
             </header>
@@ -937,7 +1030,7 @@ export function CanvasHome() {
                   }}
                 >
                   <div className="canvas-home-all-project-icon">
-                    <Grid3x3 size={18} />
+                    <ProjectCover projectId={project.id} name={project.name} />
                   </div>
                   <div className="canvas-home-all-project-info">
                     <div>{project.name}</div>

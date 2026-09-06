@@ -12,78 +12,18 @@ export function useHomeEntranceAnimation() {
     if (prefersReduced) return undefined;
 
     const ctx = gsap.context(() => {
-      gsap.from('.canvas-home-hero-badge', {
-        opacity: 0,
-        y: 16,
-        duration: 0.55,
-        ease: 'power2.out',
-      });
-
-      gsap.from('.canvas-home-hero h1', {
-        opacity: 0,
-        y: 24,
-        duration: 0.7,
-        delay: 0.08,
-        ease: 'power3.out',
-      });
-
-      gsap.from('.canvas-home-hero-subtitle', {
-        opacity: 0,
-        y: 20,
-        duration: 0.65,
-        delay: 0.16,
-        ease: 'power2.out',
-      });
-
-      gsap.from('.canvas-home-hero-cta', {
-        opacity: 0,
-        y: 18,
-        duration: 0.6,
-        delay: 0.24,
-        ease: 'back.out(1.4)',
-      });
-
-      gsap.from('.canvas-home-hero-visual', {
-        opacity: 0,
-        x: 40,
-        scale: 0.94,
-        duration: 0.85,
-        delay: 0.12,
-        ease: 'power3.out',
-      });
-
-      gsap.from('.canvas-home-section-header', {
-        opacity: 0,
-        y: 18,
-        duration: 0.55,
-        delay: 0.35,
-        ease: 'power2.out',
-      });
-
-      gsap.from('.canvas-home-project-card', {
-        opacity: 0,
-        duration: 0.55,
-        stagger: 0.07,
-        delay: 0.42,
-        ease: 'power2.out',
-      });
-
-      gsap.from('.canvas-home-features > h2', {
-        opacity: 0,
-        y: 16,
-        duration: 0.5,
-        delay: 0.55,
-        ease: 'power2.out',
-      });
-
-      gsap.from('.canvas-home-feature-card', {
-        opacity: 0,
-        y: 20,
-        duration: 0.55,
-        stagger: 0.08,
-        delay: 0.62,
-        ease: 'power2.out',
-      });
+      const timeline = gsap.timeline({ defaults: { ease: 'power3.out' } });
+      timeline
+        .from('.canvas-home-hero-brand', { opacity: 0, y: 10, duration: 0.4 })
+        .from('.canvas-home-hero h1', { opacity: 0, y: 22, duration: 0.65 }, '-=0.22')
+        .from('.canvas-home-hero-subtitle', { opacity: 0, y: 16, duration: 0.5 }, '-=0.38')
+        .from('.canvas-home-hero-actions', { opacity: 0, y: 14, duration: 0.45 }, '-=0.3')
+        .from('.canvas-home-hero-visual', { opacity: 0, x: 28, duration: 0.7 }, '-=0.55')
+        .from(
+          '.canvas-home-capability-item',
+          { opacity: 0, y: 12, duration: 0.4, stagger: 0.06 },
+          '-=0.35'
+        );
     }, root);
 
     return () => ctx.revert();

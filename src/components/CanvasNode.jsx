@@ -43,8 +43,11 @@ import {
   normalizeVideoModelSettings,
   normalizeSoraRouteVisibility,
   getVisibleVideoFamilyOptions,
+  getGroupedVideoFamilyOptions,
   getVideoModelOptionsForVisibility,
   isSoraFamilyVisible,
+  isSeedance933Model,
+  SEEDANCE_933_ENABLED,
   VIDEO_FAMILY_OPTIONS,
   VEO_GENERATION_TYPE_OPTIONS,
   DEFAULT_IMAGE_URL,
@@ -130,6 +133,38 @@ function DemoSampleBadge() {
   return <span className="node-output-demo-badge">示例</span>;
 }
 
+function RunActionButton({
+  label = '运行',
+  title,
+  disabled = false,
+  isRunning = false,
+  cost = null,
+  onClick,
+}) {
+  const hasCost = typeof cost === 'number' && Number.isFinite(cost);
+  const costText = hasCost ? cost.toFixed(4) : '';
+  const resolvedTitle = hasCost ? `${title || label} · 预估 ${costText}` : title || label;
+
+  return (
+    <button
+      type="button"
+      className="icon-button primary run-action-btn"
+      onClick={onClick}
+      title={resolvedTitle}
+      disabled={disabled}
+    >
+      {isRunning ? <LoaderCircle size={14} className="spin-icon" /> : <Play size={14} />}
+      <span className="run-action-label">{label}</span>
+      {hasCost ? (
+        <span className="run-action-cost" aria-label={`预估消耗 ${costText}`}>
+          <JimicoinIcon size={12} />
+          {costText}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
 function OptionSegment({ title, options, value, onChange, renderIcon }) {
   return (
     <div className="option-segment">
@@ -137,7 +172,9 @@ function OptionSegment({ title, options, value, onChange, renderIcon }) {
       <div className="option-segment-control">
         {options.map((option) => {
           const isActive = option.value === value;
-          const tooltip = option.hint ? `${option.label} · ${option.hint}` : option.label;
+          const tooltip = option.hint
+            ? `${option.fullLabel || option.label} · ${option.hint}`
+            : option.fullLabel || option.label;
           return (
             <button
               key={option.value}
@@ -156,6 +193,40 @@ function OptionSegment({ title, options, value, onChange, renderIcon }) {
             </button>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function GroupedOptionSegment({ title, groups, value, onChange }) {
+  return (
+    <div className="option-segment option-segment-grouped">
+      <div className="option-segment-title">{title}</div>
+      <div className="option-segment-groups">
+        {groups.map((group) => (
+          <div key={group.id} className="option-segment-group">
+            <div className="option-segment-group-label">{group.label}</div>
+            <div className="option-segment-control">
+              {group.options.map((option) => {
+                const isActive = option.value === value;
+                const tooltip = option.fullLabel || option.label;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`option-segment-button ${isActive ? 'active' : ''}`}
+                    onClick={() => onChange(option.value)}
+                    title={tooltip}
+                  >
+                    <span className="option-segment-button-text">
+                      <span className="option-segment-button-label">{option.label}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1408,7 +1479,7 @@ export function VideoToolbar({
         const payload = res?.data ?? res;
         setSoraVisibility(normalizeSoraRouteVisibility(payload));
       } catch {
-        // keep defaults (show Sora)
+        // Sora 已下线：失败时保持默认隐藏
       }
     })();
     return () => {
@@ -1478,6 +1549,7 @@ export function VideoToolbar({
       : SEEDANCE25_REF_VIDEO_MAX;
   const seedance25AudioMax = isWan30 ? WAN30_REF_AUDIO_MAX : SEEDANCE25_REF_AUDIO_MAX;
   const familyOptions = getVisibleVideoFamilyOptions(soraVisibility);
+  const familyGroups = getGroupedVideoFamilyOptions(soraVisibility);
   const modelOptions = getVideoModelOptionsForVisibility(family, soraVisibility);
   const model = modelOptions.some((option) => option.value === node.videoModel)
     ? node.videoModel
@@ -1742,6 +1814,16 @@ export function VideoToolbar({
     }
   }, [family, soraVisibility, node.videoModel, node.id]);
 
+  useEffect(() => {
+    if (SEEDANCE_933_ENABLED) return;
+    if (family !== 'seedance') return;
+    if (!isSeedance933Model(node.videoModel)) return;
+    const visibleModels = getVideoModelOptionsForVisibility('seedance', soraVisibility);
+    if (visibleModels[0]?.value) {
+      applyModelChange(visibleModels[0].value);
+    }
+  }, [family, soraVisibility, node.videoModel, node.id]);
+
   const showResolutionControl = resolutionOptions.length > 0;
   const shareRatioDurationRow = ratioOptions.length <= 3 && durationOptions.length <= 3;
 
@@ -1788,10 +1870,10 @@ export function VideoToolbar({
 
   const videoModelPanels = (
     <div className="settings-options-stack">
-      <OptionSegment
+      <GroupedOptionSegment
         title="系列"
         value={family}
-        options={familyOptions}
+        groups={familyGroups}
         onChange={(nextFamily) => {
           applyFamilyChange(nextFamily);
           setActivePopover(null);
@@ -2142,11 +2224,6 @@ export function VideoToolbar({
             ) : null}
 
             <div className="node-bottom-actions image-bottom-actions">
-              {pricingList && (
-                <span className="estimated-cost-hint">
-                  预估消耗: <JimicoinIcon size={14} /> {videoCost.toFixed(4)}
-                </span>
-              )}
               <button
                 className="icon-button"
                 onClick={() => onRunVideoGeneration(node, 'translate')}
@@ -2156,15 +2233,13 @@ export function VideoToolbar({
                 {isTranslating ? <LoaderCircle size={14} className="spin-icon" /> : <Languages size={14} />}
                 翻译
               </button>
-              <button
-                className="icon-button primary"
-                onClick={() => onRunVideoGeneration(node)}
+              <RunActionButton
                 title="运行视频生成"
+                isRunning={isRunning}
                 disabled={isRunning || isTranslating || isPromptEmpty}
-              >
-                {isRunning ? <LoaderCircle size={14} className="spin-icon" /> : <Play size={14} />}
-                运行
-              </button>
+                cost={pricingList ? videoCost : null}
+                onClick={() => onRunVideoGeneration(node)}
+              />
             </div>
           </div>
         </div>
@@ -2603,11 +2678,6 @@ export function VideoToolbar({
           </>
         )}
 
-        {pricingList && (
-          <span className="estimated-cost-hint">
-            预估消耗: <JimicoinIcon size={14} /> {videoCost.toFixed(4)}
-          </span>
-        )}
         <button
           className="icon-button"
           onClick={() => onRunVideoGeneration(node, 'translate')}
@@ -2617,15 +2687,13 @@ export function VideoToolbar({
           {isTranslating ? <LoaderCircle size={14} className="spin-icon" /> : <Languages size={14} />}
           翻译
         </button>
-        <button
-          className="icon-button primary"
-          onClick={() => onRunVideoGeneration(node)}
+        <RunActionButton
           title="运行视频生成"
+          isRunning={isRunning}
           disabled={isRunning || isTranslating || isPromptEmpty}
-        >
-          {isRunning ? <LoaderCircle size={14} className="spin-icon" /> : <Play size={14} />}
-          运行
-        </button>
+          cost={pricingList ? videoCost : null}
+          onClick={() => onRunVideoGeneration(node)}
+        />
       </div>
     </div>
   );
@@ -2937,11 +3005,6 @@ export function ImageToolbar({
           </>
         )}
 
-        {pricingList && (
-          <span className="estimated-cost-hint">
-            预估消耗: <JimicoinIcon size={14} /> {calculateEstimatedCost(pricingList, node, userProfile).toFixed(4)}
-          </span>
-        )}
         <button
           className="icon-button"
           onClick={() => onRunImageGeneration(node, 'translate')}
@@ -2951,15 +3014,13 @@ export function ImageToolbar({
           {isTranslating ? <LoaderCircle size={14} className="spin-icon" /> : <Languages size={14} />}
           翻译
         </button>
-        <button
-          className="icon-button primary"
-          onClick={() => onRunImageGeneration(node)}
+        <RunActionButton
           title="运行图片生成"
+          isRunning={isRunning}
           disabled={isRunning || isTranslating || isPromptEmpty}
-        >
-          {isRunning ? <LoaderCircle size={14} className="spin-icon" /> : <Play size={14} />}
-          运行
-        </button>
+          cost={pricingList ? calculateEstimatedCost(pricingList, node, userProfile) : null}
+          onClick={() => onRunImageGeneration(node)}
+        />
       </div>
     </div>
   );
@@ -3033,11 +3094,6 @@ function AudioToolbar({
         </div>
       ) : null}
       <div className="node-bottom-actions image-bottom-actions">
-        {pricingList && (
-          <span className="estimated-cost-hint">
-            预估消耗: <JimicoinIcon size={14} /> {calculateEstimatedCost(pricingList, node, userProfile).toFixed(4)}
-          </span>
-        )}
         <button
           className="icon-button"
           onClick={() => onRunAudioGeneration(node, 'translate')}
@@ -3047,15 +3103,14 @@ function AudioToolbar({
           {isTranslating ? <LoaderCircle size={14} className="spin-icon" /> : <Languages size={14} />}
           翻译
         </button>
-        <button
-          className="icon-button primary"
-          onClick={() => onRunAudioGeneration(node)}
+        <RunActionButton
+          label="合成"
           title="运行语音合成"
+          isRunning={isRunning}
           disabled={isRunning || isTranslating || isPromptEmpty}
-        >
-          {isRunning ? <LoaderCircle size={14} className="spin-icon" /> : <Play size={14} />}
-          合成
-        </button>
+          cost={pricingList ? calculateEstimatedCost(pricingList, node, userProfile) : null}
+          onClick={() => onRunAudioGeneration(node)}
+        />
       </div>
     </div>
   );
@@ -3363,9 +3418,16 @@ export function CanvasNode({
         <div className="node-title">
           <NodeIcon type={node.type} />
           <input
-            value={node.title}
+            value={node.title || ''}
+            placeholder="节点名称"
+            title={node.title || '节点名称'}
+            aria-label="节点名称"
             onChange={(event) => onUpdateNode(node.id, { title: event.target.value })}
             onPointerDown={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => {
+              event.stopPropagation();
+              event.currentTarget.select();
+            }}
           />
         </div>
         <div

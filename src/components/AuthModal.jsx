@@ -5,7 +5,7 @@ import {
   Loader2,
   Lock,
   Mail,
-  Sparkles,
+  Maximize2,
   User,
   X,
 } from 'lucide-react';
@@ -180,8 +180,8 @@ export function AuthModal({
   const formSubtitle = useMemo(
     () =>
       mode === 'login'
-        ? '登录后即可同步与管理画布项目'
-        : '注册账号，开始 AI 画布创作',
+        ? '登录后同步并管理你的画布项目'
+        : '注册后即可开始节点化创作',
     [mode]
   );
 
@@ -295,8 +295,6 @@ export function AuthModal({
 
         <aside className="auth-modal-left">
           <div className="auth-modal-decor-grid" aria-hidden="true" />
-          <div className="auth-modal-decor-blur auth-modal-decor-blur-1" aria-hidden="true" />
-          <div className="auth-modal-decor-blur auth-modal-decor-blur-2" aria-hidden="true" />
 
           <div className="auth-modal-brand">
             <SiteLogo
@@ -304,7 +302,7 @@ export function AuthModal({
               className="auth-modal-brand-logo"
               fallback={
                 <span className="auth-modal-brand-mark">
-                  <Sparkles size={18} aria-hidden="true" />
+                  <Maximize2 size={18} aria-hidden="true" />
                 </span>
               }
             />
@@ -330,7 +328,7 @@ export function AuthModal({
                 className="auth-modal-mobile-logo"
                 fallback={
                   <span className="auth-modal-brand-mark auth-modal-brand-mark-sm">
-                    <Sparkles size={16} aria-hidden="true" />
+                    <Maximize2 size={16} aria-hidden="true" />
                   </span>
                 }
               />
