@@ -12,6 +12,7 @@ export function SaveCustomWorkflowModal({
   onSave,
 }) {
   const [name, setName] = useState(defaultName);
+  const [description, setDescription] = useState('');
   const [target, setTarget] = useState('personal');
   const [coverUrl, setCoverUrl] = useState('');
   const [coverFile, setCoverFile] = useState(null);
@@ -21,6 +22,7 @@ export function SaveCustomWorkflowModal({
   useEffect(() => {
     if (!isOpen) return undefined;
     setName(defaultName || `自定义工作流 · ${nodeCount} 节点`);
+    setDescription('');
     setTarget('personal');
     setCoverFile(null);
     setCoverUrl(suggestedCoverUrl || '');
@@ -51,6 +53,7 @@ export function SaveCustomWorkflowModal({
     const asSystem = canSaveAsSystem && target === 'system';
     onSave?.(nextName, {
       asSystem,
+      description: asSystem ? description.trim() : '',
       coverUrl: asSystem ? coverUrl || suggestedCoverUrl || '' : '',
       coverFile: asSystem ? coverFile : null,
     });
@@ -128,6 +131,22 @@ export function SaveCustomWorkflowModal({
                 </span>
               </label>
             </fieldset>
+          ) : null}
+
+          {canSaveAsSystem && target === 'system' ? (
+            <label className="save-workflow-field">
+              <span>
+                描述 <em className="save-workflow-optional">可选</em>
+              </span>
+              <textarea
+                rows={2}
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="留空则自动根据节点内容生成，例如：上传产品图 → 生成模特图 → 转成短视频"
+                maxLength={120}
+                disabled={saving}
+              />
+            </label>
           ) : null}
 
           {canSaveAsSystem && target === 'system' ? (

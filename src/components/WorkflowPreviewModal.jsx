@@ -159,12 +159,24 @@ function PreviewNodeBody({ node }) {
       <div className="workflow-preview-node-media">
         {imageUrl ? <img src={imageUrl} alt="" draggable={false} /> : null}
         {!imageUrl && videoUrl ? (
-          <video src={videoUrl} muted loop playsInline preload="metadata" controls={false} />
+          <video
+            src={videoUrl}
+            controls
+            playsInline
+            preload="metadata"
+            onPointerDown={(event) => event.stopPropagation()}
+          />
         ) : null}
         {!imageUrl && !videoUrl && audioUrl ? (
           <div className="workflow-preview-node-audio">
             <Headphones size={18} />
             <span>音频素材</span>
+            <audio
+              src={audioUrl}
+              controls
+              preload="metadata"
+              onPointerDown={(event) => event.stopPropagation()}
+            />
           </div>
         ) : null}
         {!imageUrl && !videoUrl && !audioUrl && node.type === 'note' ? (
@@ -319,6 +331,8 @@ export function WorkflowPreviewModal({
 
   function handlePointerDown(event) {
     if (event.button !== 0) return;
+    // 音视频控件自己处理点击，不触发画布拖拽
+    if (event.target instanceof Element && event.target.closest('video, audio')) return;
     panRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -386,12 +400,6 @@ export function WorkflowPreviewModal({
             </button>
           </div>
         </header>
-
-        {workflow.coverUrl && !fullscreen ? (
-          <div className="workflow-preview-cover">
-            <img src={workflow.coverUrl} alt="" />
-          </div>
-        ) : null}
 
         <div className="workflow-preview-process" aria-label="创作过程">
           <div className="workflow-preview-process-title">创作过程 · {processNodes.length} 步</div>

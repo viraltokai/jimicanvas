@@ -1635,6 +1635,7 @@ function App() {
           connections,
           selectedIds,
           name,
+          description: options.description,
           coverUrl,
         });
         if (!workflow) {

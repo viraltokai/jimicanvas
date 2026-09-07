@@ -4676,10 +4676,34 @@ html[data-theme='light'] .workflow-template-card:hover {
   font-size: 14px;
 }
 
-.save-workflow-field input:focus {
+.save-workflow-field textarea {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-default);
+  background: var(--button-ghost-bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.save-workflow-field input:focus,
+.save-workflow-field textarea:focus {
   outline: none;
   border-color: color-mix(in srgb, var(--accent, #38bdf8) 55%, transparent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #38bdf8) 18%, transparent);
+}
+
+.save-workflow-optional {
+  margin-left: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--button-ghost-bg);
+  border: 1px solid var(--border-subtle);
+  font-style: normal;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .save-workflow-meta {
@@ -4829,22 +4853,6 @@ html[data-theme='light'] .workflow-template-card:hover {
   align-items: stretch;
 }
 
-.workflow-preview-cover {
-  margin: 0 20px 12px;
-  height: 140px;
-  border-radius: 14px;
-  overflow: hidden;
-  border: 1px solid var(--border-subtle);
-  background: var(--button-ghost-bg);
-}
-
-.workflow-preview-cover img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
 .save-workflow-actions {
   display: flex;
   justify-content: flex-end;
@@ -4888,7 +4896,6 @@ html[data-theme='light'] .workflow-template-card:hover {
 }
 
 .workflow-preview-dialog.is-rich .workflow-template-header,
-.workflow-preview-dialog.is-rich .workflow-preview-cover,
 .workflow-preview-dialog.is-rich .workflow-preview-process,
 .workflow-preview-dialog.is-rich .workflow-preview-footer {
   flex-shrink: 0;
@@ -5020,9 +5027,15 @@ html[data-theme='light'] .workflow-template-card:hover {
   transform-origin: 0 0;
 }
 
-/* 只读预览：内部节点不接收指针事件，交互全部交给舞台拖拽 */
+/* 只读预览：节点本身不接收指针事件，拖拽全部交给舞台，仅音视频可播放 */
 .workflow-preview-canvas * {
   pointer-events: none;
+}
+
+.workflow-preview-canvas video,
+.workflow-preview-canvas audio {
+  pointer-events: auto;
+  cursor: default;
 }
 
 .workflow-preview-zoom {
@@ -5185,6 +5198,17 @@ html[data-theme='light'] .workflow-template-card:hover {
 .workflow-preview-node-text {
   color: var(--text-primary);
   white-space: pre-wrap;
+}
+
+.workflow-preview-node-audio {
+  align-items: center;
+  justify-content: center;
+}
+
+.workflow-preview-node-audio audio {
+  width: 100%;
+  max-width: 240px;
+  height: 32px;
 }
 
 .workflow-preview-node-prompt {
