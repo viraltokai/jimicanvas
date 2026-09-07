@@ -9066,39 +9066,6 @@ textarea,
   font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
-html,
-body,
-#root {
-  cursor: auto;
-}
-
-a,
-button,
-[role='button'],
-.node,
-.node-floating-header,
-.icon-mini,
-.menu-item,
-.btn,
-.toolbar-button,
-.clickable,
-.cursor-pointer,
-.sidebar-item,
-.dock-item,
-.port {
-  cursor: pointer !important;
-}
-
-input,
-textarea,
-[contenteditable='true'] {
-  cursor: text !important;
-}
-
-.stage {
-  cursor: grab;
-}
-
 :where(a, button, input, textarea, select, [role='button'], [tabindex]):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
