@@ -2,9 +2,10 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Type, X } from 'lucide-react';
 import {
+  buildReferenceMentionOptions,
   detectReferenceMention,
-  filterReferenceMentionOptions,
   getReferenceLabel,
+  MENTION_KIND_VIDEO,
 } from '../lib/referencePrompt';
 import {
   getReferencePromptCursorOffset,
@@ -189,7 +190,9 @@ export function ReferencePromptInput({
   value,
   onChange,
   references = [],
+  videoReferences = [],
   resolvePreviewUrl,
+  resolveVideoPreviewUrl,
   placeholder = '输入提示词',
   disabled = false,
   wrapClassName = 'node-prompt-wrap reference-mention-wrap',
@@ -197,27 +200,83 @@ export function ReferencePromptInput({
 }) {
   const editorRef = useRef(null);
   const [mention, setMention] = useState(null);
+  const [dropdownStyle, setDropdownStyle] = useState(null);
 
-  const resolvedPlaceholder =
-    references.length > 0 ? `${placeholder}，输入 @ 引用参考图` : placeholder;
+  const hasMentionableRefs = references.length > 0 || videoReferences.length > 0;
+  const resolvedPlaceholder = hasMentionableRefs
+    ? `${placeholder}，输入 @ 引用参考${references.length && videoReferences.length ? '图/视频' : videoReferences.length ? '视频' : '图'}`
+    : placeholder;
 
   const mentionOptions = useMemo(
     () =>
-      mention && references.length > 0
-        ? filterReferenceMentionOptions(references, mention.query, resolvePreviewUrl)
+      mention && hasMentionableRefs
+        ? buildReferenceMentionOptions({
+            images: references,
+            videos: videoReferences,
+            query: mention.query,
+            resolveImagePreview: resolvePreviewUrl,
+            resolveVideoPreview: resolveVideoPreviewUrl,
+          })
         : [],
-    [mention, references, resolvePreviewUrl]
+    [mention, hasMentionableRefs, references, videoReferences, resolvePreviewUrl, resolveVideoPreviewUrl]
   );
 
   const activeMentionIndex = mention
     ? Math.min(mention.activeIndex, Math.max(mentionOptions.length - 1, 0))
     : 0;
+  const showMentionDropdown = Boolean(mention && mentionOptions.length > 0);
+
+  function paintEditor(plainText) {
+    renderReferencePromptEditor(
+      editorRef.current,
+      plainText || '',
+      references,
+      resolvePreviewUrl,
+      videoReferences,
+      resolveVideoPreviewUrl
+    );
+  }
 
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor || document.activeElement === editor) return;
-    renderReferencePromptEditor(editor, value || '', references, resolvePreviewUrl);
-  }, [value, references, resolvePreviewUrl]);
+    paintEditor(value);
+  }, [value, references, videoReferences, resolvePreviewUrl, resolveVideoPreviewUrl]);
+
+  useLayoutEffect(() => {
+    if (!showMentionDropdown) {
+      setDropdownStyle(null);
+      return undefined;
+    }
+
+    const updatePosition = () => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      const rect = editor.getBoundingClientRect();
+      const width = Math.min(Math.max(rect.width, 220), window.innerWidth - 16);
+      const estimatedHeight = Math.min(220, 12 + mentionOptions.length * 44);
+      let top = rect.bottom + 4;
+      if (top + estimatedHeight > window.innerHeight - 8) {
+        top = Math.max(8, rect.top - estimatedHeight - 4);
+      }
+      const left = Math.min(Math.max(8, rect.left), window.innerWidth - width - 8);
+      setDropdownStyle({
+        position: 'fixed',
+        top,
+        left,
+        width,
+        zIndex: 1300,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [showMentionDropdown, mentionOptions.length, value]);
 
   function syncPlainTextFromEditor() {
     const editor = editorRef.current;
@@ -238,12 +297,18 @@ export function ReferencePromptInput({
 
   function updateMentionState(plainText, cursor) {
     const detected = detectReferenceMention(plainText, cursor);
-    if (!detected || references.length === 0) {
+    if (!detected || !hasMentionableRefs) {
       setMention(null);
       return;
     }
 
-    const options = filterReferenceMentionOptions(references, detected.query, resolvePreviewUrl);
+    const options = buildReferenceMentionOptions({
+      images: references,
+      videos: videoReferences,
+      query: detected.query,
+      resolveImagePreview: resolvePreviewUrl,
+      resolveVideoPreview: resolveVideoPreviewUrl,
+    });
     if (options.length === 0) {
       setMention(null);
       return;
@@ -271,7 +336,7 @@ export function ReferencePromptInput({
     onChange(nextValue);
     setMention(null);
 
-    renderReferencePromptEditor(editor, nextValue, references, resolvePreviewUrl);
+    paintEditor(nextValue);
     requestAnimationFrame(() => {
       restoreReferencePromptCursor(editor, nextCursor);
       editor.focus();
@@ -290,7 +355,7 @@ export function ReferencePromptInput({
     if (plainText !== (value || '')) {
       onChange(plainText);
     }
-    renderReferencePromptEditor(editor, plainText, references, resolvePreviewUrl);
+    paintEditor(plainText);
     setMention(null);
   }
 
@@ -362,30 +427,45 @@ export function ReferencePromptInput({
         onMouseUp={handleEditorMouseUp}
       />
       {extraActions && <div className="prompt-editor-actions">{extraActions}</div>}
-      {mention && mentionOptions.length > 0 ? (
-        <div className="reference-mention-dropdown" role="listbox">
-          {mentionOptions.map((option, optionIndex) => (
-            <button
-              key={option.token}
-              type="button"
-              role="option"
-              aria-selected={optionIndex === activeMentionIndex}
-              className={`reference-mention-option ${optionIndex === activeMentionIndex ? 'active' : ''}`}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => handleSelect(option)}
-            >
-              <span className="reference-mention-option-index">{option.index + 1}</span>
-              {option.previewUrl ? (
-                <img src={option.previewUrl} alt={option.label} className="reference-mention-option-thumb" />
-              ) : (
-                <span className="reference-mention-option-thumb reference-mention-option-thumb-empty" />
-              )}
-              <span className="reference-mention-option-label">{option.label}</span>
-              <span className="reference-mention-option-token">{option.token}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
+      {showMentionDropdown && dropdownStyle
+        ? createPortal(
+            <div className="reference-mention-dropdown" role="listbox" style={dropdownStyle}>
+              {mentionOptions.map((option, optionIndex) => (
+                <button
+                  key={option.token}
+                  type="button"
+                  role="option"
+                  aria-selected={optionIndex === activeMentionIndex}
+                  className={`reference-mention-option ${optionIndex === activeMentionIndex ? 'active' : ''}`}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => handleSelect(option)}
+                >
+                  <span className="reference-mention-option-index">{option.index + 1}</span>
+                  {option.previewUrl && option.kind === MENTION_KIND_VIDEO ? (
+                    <video
+                      src={option.previewUrl}
+                      muted
+                      playsInline
+                      preload="metadata"
+                      className="reference-mention-option-thumb"
+                    />
+                  ) : option.previewUrl ? (
+                    <img
+                      src={option.previewUrl}
+                      alt={option.label}
+                      className="reference-mention-option-thumb"
+                    />
+                  ) : (
+                    <span className="reference-mention-option-thumb reference-mention-option-thumb-empty" />
+                  )}
+                  <span className="reference-mention-option-label">{option.label}</span>
+                  <span className="reference-mention-option-token">{option.token}</span>
+                </button>
+              ))}
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }

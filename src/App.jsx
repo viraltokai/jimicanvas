@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Sparkles, Plus, Upload } from 'lucide-react';
+import { AlertCircle, Loader2, Sparkles, Plus, Upload } from 'lucide-react';
 import { AssetPickerModal } from './components/AssetPickerModal';
 import { SeedanceAssetPickerModal } from './components/SeedanceAssetPickerModal';
 import { MediaUploadOverlay } from './components/MediaUploadOverlay';
@@ -90,6 +90,7 @@ import {
   resolveVideoToolbarReferences,
   resolveImageReferenceImages,
   validateVideoImageConnection,
+  validateNodeConnection,
 } from './lib/connections';
 import { createSpeech, normalizeAudioUrl, filterAudioFiles, isAudioFile, isAudioAssetRecord } from './lib/audioApi';
 import {
@@ -286,7 +287,7 @@ function App() {
   const [isResizing, setIsResizing] = useState(false);
   const [isStageDragOver, setIsStageDragOver] = useState(false);
   const [importError, setImportError] = useState('');
-  const [copyNotice, setCopyNotice] = useState('');
+  const [copyNotice, setCopyNotice] = useState(null);
   const [runningNodeId, setRunningNodeId] = useState(null);
   const [translatingNodeId, setTranslatingNodeId] = useState(null);
   const [uploadingNodeId, setUploadingNodeId] = useState(null);
@@ -1837,12 +1838,17 @@ function App() {
     }
   }
 
-  function showCopyNotice(message) {
-    setCopyNotice(message);
+  function showCopyNotice(message, options = {}) {
+    const text = String(message || '').trim();
+    if (!text) return;
+    setCopyNotice({
+      message: text,
+      tone: options.tone === 'error' ? 'error' : 'info',
+    });
     if (copyNoticeTimerRef.current) {
       clearTimeout(copyNoticeTimerRef.current);
     }
-    copyNoticeTimerRef.current = window.setTimeout(() => setCopyNotice(''), TOAST_AUTO_DISMISS_MS);
+    copyNoticeTimerRef.current = window.setTimeout(() => setCopyNotice(null), TOAST_AUTO_DISMISS_MS);
   }
 
   function copyNode(nodeId) {
@@ -3768,11 +3774,17 @@ function App() {
     const fromNode = nodes.find((item) => item.id === fromNodeId);
     const toNode = nodes.find((item) => item.id === toNodeId);
 
+    const connectionError = validateNodeConnection(fromNode, toNode);
+    if (connectionError) {
+      showCopyNotice(connectionError, { tone: 'error' });
+      return;
+    }
+
     if (fromNode?.type === 'image' && toNode?.type === 'video') {
       const existingLinks = getImageInputLinks(toNodeId, nodes, connections);
       const validationError = validateVideoImageConnection(toNode, existingLinks);
       if (validationError) {
-        showCopyNotice(validationError);
+        showCopyNotice(validationError, { tone: 'error' });
         return;
       }
     }
@@ -3782,7 +3794,7 @@ function App() {
       (toNode?.type === 'image' || toNode?.type === 'video' || toNode?.type === 'note') &&
       !getImageNodeReferenceUrl(fromNode)
     ) {
-      showCopyNotice('示例图不能作为图片引用，请先上传或生成真实图片');
+      showCopyNotice('示例图不能作为图片引用，请先上传或生成真实图片', { tone: 'error' });
     }
 
     updateActiveCanvas((doc) => {
@@ -3810,6 +3822,13 @@ function App() {
     if (!linkNodePicker) return;
 
     const { fromNodeId, canvasX, canvasY } = linkNodePicker;
+    const fromNode = nodes.find((item) => item.id === fromNodeId);
+    const connectionError = validateNodeConnection(fromNode, { id: '__new__', type });
+    if (connectionError) {
+      showCopyNotice(connectionError, { tone: 'error' });
+      return;
+    }
+
     const node = createNode(type, canvasX, canvasY);
     const positionedNode = {
       ...node,
@@ -4322,7 +4341,17 @@ function App() {
       />
 
       {importError ? <div className="toast-error">{importError}</div> : null}
-      {copyNotice ? <div className="toast-info toast-copy">{copyNotice}</div> : null}
+      {copyNotice ? (
+        <div
+          className={`toast-copy ${copyNotice.tone === 'error' ? 'toast-error toast-copy-error' : 'toast-info'}`}
+          role={copyNotice.tone === 'error' ? 'alert' : 'status'}
+        >
+          {copyNotice.tone === 'error' ? (
+            <AlertCircle size={16} className="toast-copy-icon" aria-hidden="true" />
+          ) : null}
+          <span className="toast-copy-message">{copyNotice.message}</span>
+        </div>
+      ) : null}
       <MediaUploadOverlay
         active={Boolean(mediaUpload) && !uploadingNodeId && !assetPicker.nodeId}
         current={mediaUpload?.current || 0}
@@ -4468,6 +4497,11 @@ function App() {
         <NodeTypePickerPopover
           screenX={linkNodePicker.screenX}
           screenY={linkNodePicker.screenY}
+          allowedTypes={
+            nodes.find((item) => item.id === linkNodePicker.fromNodeId)?.type === 'video'
+              ? ['note', 'video', 'audio']
+              : null
+          }
           onSelect={createLinkedNode}
           onClose={closeLinkNodePicker}
         />

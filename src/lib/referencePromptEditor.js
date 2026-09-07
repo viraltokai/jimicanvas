@@ -1,4 +1,10 @@
-import { getReferenceLabel, getReferenceToken, parsePromptSegments } from './referencePrompt';
+import {
+  getReferenceLabel,
+  getReferenceToken,
+  MENTION_KIND_IMAGE,
+  MENTION_KIND_VIDEO,
+  parsePromptSegments,
+} from './referencePrompt';
 
 function appendTextWithBreaks(parent, text) {
   const parts = String(text || '').split('\n');
@@ -12,19 +18,60 @@ function appendTextWithBreaks(parent, text) {
   });
 }
 
-export function createMentionChipElement(index, references, resolvePreviewUrl) {
-  const reference = references[index];
-  const previewUrl = reference ? resolvePreviewUrl(reference, index) : '';
-  const label = getReferenceLabel(index);
-  const token = getReferenceToken(index);
+function resolveMentionPreview(kind, index, imageReferences, videoReferences, resolveImagePreview, resolveVideoPreview) {
+  if (kind === MENTION_KIND_VIDEO) {
+    const reference = videoReferences[index];
+    return {
+      reference,
+      previewUrl: reference ? resolveVideoPreview?.(reference, index) || '' : '',
+    };
+  }
+  const reference = imageReferences[index];
+  return {
+    reference,
+    previewUrl: reference ? resolveImagePreview?.(reference, index) || '' : '',
+  };
+}
+
+export function createMentionChipElement(
+  kind,
+  index,
+  imageReferences = [],
+  videoReferences = [],
+  resolveImagePreview,
+  resolveVideoPreview
+) {
+  const mentionKind = kind === MENTION_KIND_VIDEO ? MENTION_KIND_VIDEO : MENTION_KIND_IMAGE;
+  const { reference, previewUrl } = resolveMentionPreview(
+    mentionKind,
+    index,
+    imageReferences,
+    videoReferences,
+    resolveImagePreview,
+    resolveVideoPreview
+  );
+  const label = getReferenceLabel(index, mentionKind);
+  const token = getReferenceToken(index, mentionKind);
 
   const chip = document.createElement('span');
-  chip.className = `reference-prompt-preview-mention ${reference ? '' : 'is-missing'}`.trim();
+  chip.className =
+    `reference-prompt-preview-mention ${mentionKind === MENTION_KIND_VIDEO ? 'is-video' : ''} ${
+      reference ? '' : 'is-missing'
+    }`.trim();
   chip.contentEditable = 'false';
+  chip.dataset.mentionKind = mentionKind;
   chip.dataset.mentionIndex = String(index);
-  chip.title = reference ? label : `${token} 无对应参考图`;
+  chip.title = reference ? label : `${token} 无对应参考${mentionKind === MENTION_KIND_VIDEO ? '视频' : '图'}`;
 
-  if (previewUrl) {
+  if (previewUrl && mentionKind === MENTION_KIND_VIDEO) {
+    const video = document.createElement('video');
+    video.src = previewUrl;
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'metadata';
+    video.className = 'reference-prompt-preview-mention-thumb';
+    chip.appendChild(video);
+  } else if (previewUrl) {
     const image = document.createElement('img');
     image.src = previewUrl;
     image.alt = label;
@@ -32,7 +79,8 @@ export function createMentionChipElement(index, references, resolvePreviewUrl) {
     chip.appendChild(image);
   } else {
     const placeholder = document.createElement('span');
-    placeholder.className = 'reference-prompt-preview-mention-thumb reference-prompt-preview-mention-thumb-empty';
+    placeholder.className =
+      'reference-prompt-preview-mention-thumb reference-prompt-preview-mention-thumb-empty';
     placeholder.textContent = String(index + 1);
     chip.appendChild(placeholder);
   }
@@ -45,9 +93,18 @@ export function createMentionChipElement(index, references, resolvePreviewUrl) {
   return chip;
 }
 
-export function renderReferencePromptEditor(root, plainText, references, resolvePreviewUrl) {
+export function renderReferencePromptEditor(
+  root,
+  plainText,
+  imageReferences = [],
+  resolveImagePreview,
+  videoReferences = [],
+  resolveVideoPreview
+) {
   if (!root) return;
 
+  // Backward-compatible signature: (root, text, refs, resolvePreview)
+  // New signature also accepts video refs as 5th/6th args.
   root.innerHTML = '';
   const segments = parsePromptSegments(plainText);
   if (segments.length === 0) {
@@ -62,8 +119,23 @@ export function renderReferencePromptEditor(root, plainText, references, resolve
       appendTextWithBreaks(root, segment.value);
       return;
     }
-    root.appendChild(createMentionChipElement(segment.index, references, resolvePreviewUrl));
+    root.appendChild(
+      createMentionChipElement(
+        segment.kind || MENTION_KIND_IMAGE,
+        segment.index,
+        imageReferences,
+        videoReferences,
+        resolveImagePreview,
+        resolveVideoPreview
+      )
+    );
   });
+}
+
+function mentionTokenFromNode(node) {
+  const kind =
+    node.dataset?.mentionKind === MENTION_KIND_VIDEO ? MENTION_KIND_VIDEO : MENTION_KIND_IMAGE;
+  return getReferenceToken(Number(node.dataset.mentionIndex), kind);
 }
 
 export function serializeReferencePromptEditor(root) {
@@ -79,7 +151,7 @@ export function serializeReferencePromptEditor(root) {
     if (node.nodeType !== Node.ELEMENT_NODE) return;
 
     if (node.dataset?.mentionIndex != null) {
-      result += getReferenceToken(Number(node.dataset.mentionIndex));
+      result += mentionTokenFromNode(node);
       return;
     }
 
@@ -137,7 +209,7 @@ export function restoreReferencePromptCursor(root, offset) {
     if (node.nodeType !== Node.ELEMENT_NODE) return;
 
     if (node.dataset?.mentionIndex != null) {
-      const token = getReferenceToken(Number(node.dataset.mentionIndex));
+      const token = mentionTokenFromNode(node);
       if (remaining <= token.length) {
         if (remaining === 0) {
           range.setStartBefore(node);

@@ -312,6 +312,39 @@ textarea {
 
 .toast-copy {
   z-index: 120;
+  animation: toast-copy-in 180ms ease-out;
+}
+
+.toast-copy-error {
+  top: 68px;
+  right: 16px;
+  left: auto;
+  bottom: auto;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  box-shadow: 0 12px 32px rgba(127, 29, 29, 0.35), var(--toast-shadow);
+}
+
+.toast-copy-icon {
+  flex-shrink: 0;
+}
+
+.toast-copy-message {
+  min-width: 0;
+}
+
+@keyframes toast-copy-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .toast-info .toast-action {
@@ -1834,11 +1867,8 @@ textarea {
 }
 
 .reference-mention-dropdown {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: calc(100% + 4px);
-  z-index: 30;
+  position: fixed;
+  z-index: 1300;
   max-height: 220px;
   overflow-y: auto;
   border: 1px solid var(--border-default);
@@ -1976,6 +2006,10 @@ textarea {
 .reference-prompt-preview-mention.is-missing {
   border-color: rgba(239, 68, 68, 0.35);
   background: rgba(239, 68, 68, 0.08);
+}
+
+.reference-prompt-preview-mention.is-video {
+  border-color: color-mix(in srgb, var(--accent, #38bdf8) 40%, transparent);
 }
 
 .reference-prompt-preview-mention-thumb {
@@ -2373,7 +2407,8 @@ textarea {
   padding: 6px;
 }
 
-.video-toolbar-seedance .node-prompt-input {
+.video-toolbar-seedance .node-prompt-input,
+.video-toolbar-seedance .reference-prompt-editor {
   min-height: 140px;
   max-height: 280px;
 }

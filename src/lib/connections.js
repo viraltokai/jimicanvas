@@ -397,6 +397,19 @@ export function validateVideoImageConnection(videoNode, imageInputLinks = []) {
   return null;
 }
 
+/** 校验节点连线是否合法；返回错误文案，合法则返回 null */
+export function validateNodeConnection(fromNode, toNode) {
+  if (!fromNode || !toNode) return '无效节点';
+  if (fromNode.id === toNode.id) return '不能连接到自身';
+
+  // 图片节点只接受文本 / 图片引用，不允许视频节点连入
+  if (fromNode.type === 'video' && toNode.type === 'image') {
+    return '图片节点不支持引用视频节点';
+  }
+
+  return null;
+}
+
 export function resolveVideoReferenceImages(node, nodes = [], connections = []) {
   if (!isVideoReferenceImageMode(node)) {
     return [];

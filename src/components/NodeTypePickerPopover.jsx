@@ -7,7 +7,18 @@ const NODE_OPTIONS = [
   { type: 'audio', label: '音频节点', icon: Headphones },
 ];
 
-export function NodeTypePickerPopover({ screenX, screenY, onSelect, onClose }) {
+export function NodeTypePickerPopover({
+  screenX,
+  screenY,
+  onSelect,
+  onClose,
+  allowedTypes = null,
+}) {
+  const options =
+    Array.isArray(allowedTypes) && allowedTypes.length > 0
+      ? NODE_OPTIONS.filter((option) => allowedTypes.includes(option.type))
+      : NODE_OPTIONS;
+
   return (
     <div className="node-type-picker-backdrop" onPointerDown={onClose}>
       <div
@@ -22,7 +33,7 @@ export function NodeTypePickerPopover({ screenX, screenY, onSelect, onClose }) {
           </button>
         </header>
         <div className="node-type-picker-options">
-          {NODE_OPTIONS.map(({ type, label, icon: Icon }) => (
+          {options.map(({ type, label, icon: Icon }) => (
             <button
               key={type}
               type="button"

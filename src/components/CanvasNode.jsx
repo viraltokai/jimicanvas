@@ -2751,27 +2751,17 @@ export function VideoToolbar({
         </div>
       ) : null}
 
-      {family !== 'seedance' && family !== 'sora' ? (
-        <ReferencePromptInput
-          value={node.prompt || ''}
-          onChange={(prompt) => onUpdateNode(node.id, { prompt, status: 'idle' })}
-          references={resolvedReferences}
-          resolvePreviewUrl={referencePreviewSrc}
-          placeholder="输入视频提示词，回车换行；支持 @ 引用参考图"
-          disabled={isRunning}
-          extraActions={extraActions}
-        />
-      ) : (
-        <div className="node-prompt-wrap node-prompt-wrap--plain">
-          <textarea
-            className="node-prompt-input"
-            value={node.prompt || ''}
-            onChange={(event) => onUpdateNode(node.id, { prompt: event.target.value, status: 'idle' })}
-            placeholder="输入视频提示词"
-          />
-          {extraActions ? <div className="prompt-editor-actions">{extraActions}</div> : null}
-        </div>
-      )}
+      <ReferencePromptInput
+        value={node.prompt || ''}
+        onChange={(prompt) => onUpdateNode(node.id, { prompt, status: 'idle' })}
+        references={resolvedReferences}
+        videoReferences={referenceVideos}
+        resolvePreviewUrl={referencePreviewSrc}
+        resolveVideoPreviewUrl={(item) => resolveSeedanceMediaPreviewUrl(item, 'video')}
+        placeholder="输入视频提示词，回车换行"
+        disabled={isRunning}
+        extraActions={extraActions}
+      />
 
       {showSettingsPopover && activePopover === 'params' ? (
         isSeedance ? (
