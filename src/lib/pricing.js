@@ -11,11 +11,13 @@ import {
 
 export function getUserPriceType(profile) {
   if (!profile) return 'standard';
-  const roles = profile.roles || [];
+  // fetchUserInfo 返回扁平对象时，原始接口在 profile.profile
+  const raw = profile.profile && typeof profile.profile === 'object' ? profile.profile : profile;
+  const roles = raw.roles || profile.roles || [];
   if (roles.includes('proxy') || roles.includes('agent')) {
     return 'agent_self';
   }
-  if (profile.is_proxy_subordinate) {
+  if (raw.is_proxy_subordinate || profile.is_proxy_subordinate) {
     return 'proxy_sub';
   }
   return 'standard';

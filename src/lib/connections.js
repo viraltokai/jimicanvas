@@ -4,10 +4,12 @@ import {
   getImageReferenceMax,
   inferVideoFamily,
   getVideoReferenceImageMax,
+  normalizeSeedanceInputMode,
   VIDEO_FRAME_IMAGE_CONNECTION_MAX,
 } from './constants';
 import { isDefaultDemoImageUrl, getImageNodeDisplayImages } from './imageNodeLayout';
 import { isVideoContent } from './canvas';
+import { normalizeImageUrl } from './imageApi';
 
 export function getIncomingConnections(nodeId, connections = []) {
   return connections.filter((link) => link.toNodeId === nodeId);
@@ -24,18 +26,32 @@ export function getTextInputLinks(nodeId, nodes = [], connections = []) {
 
 export function getTextInputPreview(node) {
   if (!node) return '';
-  return String(node.prompt || node.content || node.title || '').trim();
+  const content = String(node.content || '').trim();
+  const prompt = String(node.prompt || '').trim();
+  const title = String(node.title || '').trim();
+  // 文本引用优先用结果区 content；占位/失败文案时回退到输入 prompt
+  const placeholderContents = new Set([
+    '双击并编辑',
+    '运行后显示结果',
+    '暂无结果',
+    '文本节点内容为空',
+    '缺少 token',
+  ]);
+  const isPlaceholder =
+    !content ||
+    placeholderContents.has(content) ||
+    node.status === 'error' ||
+    content.startsWith('运行失败') ||
+    content.startsWith('生成失败');
+  if (!isPlaceholder) return content;
+  return prompt || title;
 }
 
 export function formatTextInputLabel(node, maxLength = 18) {
   if (!node) return '空文本';
 
-  const title = String(node.title || '').trim();
   const preview = getTextInputPreview(node).replace(/\s+/g, ' ');
-  const label =
-    title && title !== '文本节点'
-      ? title
-      : preview || '文本节点';
+  const label = preview || '文本节点';
 
   if (label.length <= maxLength) return label;
   return `${label.slice(0, maxLength)}…`;
@@ -86,7 +102,7 @@ export function getImageNodeOutputUrl(node) {
 export function getImageNodeReferenceUrl(node) {
   const url = getImageNodeOutputUrl(node);
   if (!url || isDefaultDemoImageUrl(url)) return '';
-  return url;
+  return normalizeImageUrl(url) || url;
 }
 
 export function isDefaultDemoVideoUrl(url) {
@@ -126,7 +142,7 @@ export function isVideoToPromptNode(node, videoInputLinks = []) {
   if (!node || node.type !== 'note') return false;
   if (node.workflowMode === 'video-to-prompt') return true;
   if (node.workflowMode === 'image-to-prompt') return false;
-  return resolveNoteVideoInputUrls(videoInputLinks).length > 0;
+  return (videoInputLinks || []).length > 0;
 }
 
 export function resolveNoteImageInputUrls(imageInputLinks = []) {
@@ -142,7 +158,7 @@ export function isImageToPromptNode(node, imageInputLinks = []) {
   if (!node || node.type !== 'note') return false;
   if (node.workflowMode === 'video-to-prompt') return false;
   if (node.workflowMode === 'image-to-prompt') return true;
-  return resolveNoteImageInputUrls(imageInputLinks).length > 0;
+  return (imageInputLinks || []).length > 0;
 }
 
 function dedupeReferenceImages(references = []) {
@@ -220,17 +236,34 @@ export function isVideoFrameImageMode(node) {
     return String(node?.videoFlux3Mode || 't2v') === 'flf';
   }
   if (family === 'seedance') {
-    const refs = Array.isArray(node?.referenceImages) ? node.referenceImages : [];
-    return refs.length === 0;
+    return normalizeSeedanceInputMode(node?.videoGenerationType, node) === 'frame';
   }
   return false;
 }
 
 export function isVideoReferenceImageMode(node) {
+  const family = inferVideoFamily(node);
+  if (family === 'veo') {
+    return (node?.videoGenerationType || 'frame') === 'reference';
+  }
+  if (family === 'flux3') {
+    const mode = String(node?.videoFlux3Mode || 't2v');
+    return mode === 'i2v' || mode === 'keyframes';
+  }
+  if (family === 'seedance') {
+    return normalizeSeedanceInputMode(node?.videoGenerationType, node) === 'reference';
+  }
   return !isVideoFrameImageMode(node);
 }
 
 export function getVideoImageConnectionMax(node) {
+  const family = inferVideoFamily(node);
+  if (family === 'seedance') {
+    const mode = normalizeSeedanceInputMode(node?.videoGenerationType, node);
+    if (mode === 't2v') return 0;
+    if (mode === 'frame') return VIDEO_FRAME_IMAGE_CONNECTION_MAX;
+    return getVideoReferenceImageMax(node);
+  }
   if (isVideoFrameImageMode(node)) {
     return VIDEO_FRAME_IMAGE_CONNECTION_MAX;
   }
@@ -256,7 +289,7 @@ export function resolveVideoConnectedImageAssets(imageInputLinks = []) {
 export function resolveVideoToolbarReferences(node, imageInputLinks = []) {
   const assetRefs = Array.isArray(node?.referenceImages) ? [...node.referenceImages] : [];
   if (!isVideoReferenceImageMode(node)) {
-    return dedupeReferenceImages(assetRefs);
+    return [];
   }
 
   const connected = resolveVideoConnectedImageAssets(imageInputLinks);
@@ -293,6 +326,9 @@ export function resolveVideoToolbarFrames(node, imageInputLinks = []) {
 }
 
 export function resolveVideoGenerationFrames(node, nodes = [], connections = []) {
+  if (!isVideoFrameImageMode(node)) {
+    return { firstFrame: null, lastFrame: null };
+  }
   const imageInputLinks = getImageInputLinks(node.id, nodes, connections);
   const { firstFrame, lastFrame } = resolveVideoToolbarFrames(node, imageInputLinks);
   return { firstFrame, lastFrame };
@@ -302,6 +338,9 @@ export function validateVideoImageConnection(videoNode, imageInputLinks = []) {
   if (!videoNode || videoNode.type !== 'video') return null;
 
   const max = getVideoImageConnectionMax(videoNode);
+  if (max <= 0) {
+    return '当前模式不支持连接图片，请先切换到首尾帧或全能参考';
+  }
   if (imageInputLinks.length >= max) {
     if (isVideoFrameImageMode(videoNode)) {
       return `首尾帧模式最多连接 ${VIDEO_FRAME_IMAGE_CONNECTION_MAX} 张图片`;
@@ -313,6 +352,9 @@ export function validateVideoImageConnection(videoNode, imageInputLinks = []) {
 }
 
 export function resolveVideoReferenceImages(node, nodes = [], connections = []) {
+  if (!isVideoReferenceImageMode(node)) {
+    return [];
+  }
   const imageInputLinks = getImageInputLinks(node.id, nodes, connections);
   return resolveVideoToolbarReferences(node, imageInputLinks).map((item) => ({
     id: item.id,

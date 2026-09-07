@@ -7,6 +7,7 @@ import { normalizeVideoUrl, resolveSeedanceMediaPreviewUrl } from '../lib/videoA
 export function AssetPickerModal({
   assets,
   loading,
+  uploading = false,
   source,
   search,
   selectedAssets,
@@ -15,7 +16,10 @@ export function AssetPickerModal({
   subtitle = '选择图片作为参考图',
   mediaType = 'image',
   libraryOnly = false,
+  showMediaTabs = false,
+  confirmLabel = '确认选择',
   onSourceChange,
+  onMediaTypeChange,
   onSearchChange,
   onToggleAsset,
   onUploadImages,
@@ -37,8 +41,13 @@ export function AssetPickerModal({
     assetColumns[index % assetColumns.length].push(asset);
   });
 
+  function handleClose() {
+    if (uploading) return;
+    onClose?.();
+  }
+
   return (
-    <div className="asset-modal-backdrop" onPointerDown={onClose}>
+    <div className="asset-modal-backdrop" onPointerDown={handleClose}>
       <section
         className={`asset-modal ${isAudio ? 'asset-modal-audio' : ''}`}
         onPointerDown={(event) => event.stopPropagation()}
@@ -51,7 +60,7 @@ export function AssetPickerModal({
               <span>{subtitle}</span>
             </div>
           </div>
-          <button className="panel-icon" onClick={onClose} title="关闭">
+          <button className="panel-icon" onClick={handleClose} title="关闭" disabled={uploading}>
             <X size={16} />
           </button>
         </header>
@@ -60,7 +69,31 @@ export function AssetPickerModal({
           {libraryOnly ? (
             <p className="asset-library-tip">仅展示满血版素材库中已审核通过的素材</p>
           ) : null}
-          {!libraryOnly ? (
+          {showMediaTabs ? (
+            <div className="asset-source-tabs">
+              <button
+                className={mediaType === 'image' ? 'active' : ''}
+                onClick={() => onMediaTypeChange?.('image')}
+              >
+                <ImageIcon size={14} />
+                图片
+              </button>
+              <button
+                className={mediaType === 'video' ? 'active' : ''}
+                onClick={() => onMediaTypeChange?.('video')}
+              >
+                <Film size={14} />
+                视频
+              </button>
+              <button
+                className={mediaType === 'audio' ? 'active' : ''}
+                onClick={() => onMediaTypeChange?.('audio')}
+              >
+                <Headphones size={14} />
+                音频
+              </button>
+            </div>
+          ) : !libraryOnly ? (
             <div className="asset-source-tabs">
               <button
                 className={source === 'local' ? 'active' : ''}
@@ -93,9 +126,16 @@ export function AssetPickerModal({
               className="icon-button asset-upload-button"
               onClick={() => fileInputRef.current?.click()}
               title={isVideo ? '上传视频' : isAudio ? '上传音频' : '上传图片'}
+              disabled={uploading || loading}
             >
-              <Upload size={14} />
-              {isVideo ? '上传视频' : isAudio ? '上传音频' : '上传图片'}
+              {uploading ? <LoaderCircle size={14} className="spin-icon" /> : <Upload size={14} />}
+              {uploading
+                ? '上传中…'
+                : isVideo
+                  ? '上传视频'
+                  : isAudio
+                    ? '上传音频'
+                    : '上传图片'}
             </button>
           ) : null}
           <input
@@ -189,15 +229,15 @@ export function AssetPickerModal({
             已选择 {selectedAssets.length}/{maxCount}
           </span>
           <div>
-            <button className="icon-button" onClick={onClose}>
+            <button className="icon-button" onClick={handleClose} disabled={uploading}>
               取消
             </button>
             <button
               className="icon-button primary"
               onClick={onConfirm}
-              disabled={selectedAssets.length === 0}
+              disabled={uploading || selectedAssets.length === 0}
             >
-              确认选择
+              {confirmLabel}
             </button>
           </div>
         </footer>

@@ -1,21 +1,24 @@
 import {
   AlertCircle,
   Check,
+  Circle,
   Cloud,
   CloudOff,
   CloudUpload,
+  Ellipsis,
   Keyboard,
   Loader2,
+  Mail,
   MessageCircle,
-  Circle,
   Moon,
   Sun,
   Wallet,
-  Mail,
 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { getNextThemeLabel } from '../lib/theme';
-import { BrandProjectMenu } from './BrandProjectMenu';
 import { formatBalanceAmount } from '../lib/userApi';
+import { BrandProjectMenu } from './BrandProjectMenu';
+import { UserAvatarMenu } from './UserAvatarMenu';
 
 const CLOUD_SYNC_META = {
   offline: {
@@ -97,13 +100,40 @@ export function Topbar({
   onRecharge,
   inboxUnread = 0,
   onOpenInbox,
+  userProfile = null,
+  onLogout,
 }) {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef(null);
   const cloudMeta = CLOUD_SYNC_META[cloudSyncStatus] || CLOUD_SYNC_META.offline;
   const CloudIcon = cloudMeta.Icon;
   const syncedHint =
     cloudSyncStatus === 'synced' && cloudLastSyncedAt
       ? `${formatSyncedAt(cloudLastSyncedAt)}同步`
       : cloudMeta.hint;
+  const showStandaloneMore = !userProfile;
+
+  useEffect(() => {
+    if (!moreOpen || !showStandaloneMore) return undefined;
+    const onPointerDown = (event) => {
+      if (moreRef.current?.contains(event.target)) return;
+      setMoreOpen(false);
+    };
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setMoreOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [moreOpen, showStandaloneMore]);
+
+  const runMore = (action) => {
+    setMoreOpen(false);
+    action?.();
+  };
 
   return (
     <header className="topbar">
@@ -120,28 +150,32 @@ export function Topbar({
           onDeleteProject={onDeleteProject}
         />
 
-        <span className="meta-pill">{nodesCount} 节点</span>
-        <span className="meta-pill">{connectionsCount} 连线</span>
+        <span className="meta-pill" title={`${nodesCount} 节点 · ${connectionsCount} 连线`}>
+          {nodesCount} · {connectionsCount}
+        </span>
       </div>
 
       <div className="topbar-meta">
         <div className="toolbar-row">
           {quotaVisible ? (
-            <span
-              className={`quota-chip ${
+            <button
+              type="button"
+              className={`quota-chip quota-chip-action ${
                 quotaPercentage != null && quotaPercentage <= 5
                   ? 'quota-chip-critical'
                   : quotaPercentage != null && quotaPercentage <= 20
                     ? 'quota-chip-low'
                     : ''
               }`}
+              onClick={onRecharge}
               title={
                 quotaLoading
                   ? '正在加载个人额度'
-                  : quotaPercentage != null
-                    ? `剩余额度 ${quotaPercentage}%（${formatBalanceAmount(quotaRemaining ?? 0)}）`
-                    : `剩余额度 ${formatBalanceAmount(quotaRemaining ?? 0)}`
+                  : `剩余 ${formatBalanceAmount(quotaRemaining ?? 0)}${
+                      quotaPercentage != null ? ` · ${quotaPercentage}%` : ''
+                    } · 点击充值`
               }
+              aria-label="额度与充值"
             >
               {quotaLoading ? (
                 <Loader2 size={14} aria-hidden="true" className="sync-chip-spin" />
@@ -149,93 +183,119 @@ export function Topbar({
                 <Wallet size={14} aria-hidden="true" />
               )}
               <span className="quota-chip-label">
-                {quotaLoading ? '额度加载中' : formatBalanceAmount(quotaRemaining ?? 0)}
+                {quotaLoading ? '加载中' : formatBalanceAmount(quotaRemaining ?? 0)}
               </span>
               {!quotaLoading && quotaPercentage != null ? (
                 <span className="quota-chip-hint">{quotaPercentage}%</span>
               ) : null}
-            </span>
-          ) : null}
-
-          {onRecharge ? (
+              <span className="quota-chip-cta">充值</span>
+            </button>
+          ) : onRecharge ? (
             <button
               type="button"
-              className="topbar-shortcuts-button topbar-recharge-button"
+              className="topbar-icon-button"
               onClick={onRecharge}
-              title="前往充值"
+              title="充值"
               aria-label="充值"
             >
-              <Wallet size={14} aria-hidden="true" />
-              <span>充值</span>
+              <Wallet size={15} aria-hidden="true" />
             </button>
           ) : null}
 
-          {onOpenInbox ? (
+          {!userProfile && onOpenInbox ? (
             <button
               type="button"
-              className="topbar-shortcuts-button"
+              className="topbar-icon-button"
               onClick={onOpenInbox}
               title="站内信"
               aria-label="站内信"
             >
               <span className="inbox-button-icon">
-                <Mail size={14} aria-hidden="true" />
+                <Mail size={15} aria-hidden="true" />
                 {inboxUnread > 0 ? (
                   <span className="inbox-unread-badge">{inboxUnread > 99 ? '99+' : inboxUnread}</span>
                 ) : null}
               </span>
-              <span>站内信</span>
             </button>
           ) : null}
 
-          <button
-            type="button"
-            className="topbar-shortcuts-button"
-            onClick={onOpenCustomerService}
-            title="联系客服"
-            aria-label="联系客服"
-          >
-            <MessageCircle size={14} aria-hidden="true" />
-            <span>联系客服</span>
-          </button>
-
-          <button
-            type="button"
-            className="topbar-shortcuts-button"
-            onClick={onOpenKeyboardShortcuts}
-            title="键盘快捷键 (?)"
-            aria-label="键盘快捷键"
-          >
-            <Keyboard size={14} aria-hidden="true" />
-            <span>快捷键</span>
-          </button>
-
-          {onToggleTheme ? (
-            <button
-              type="button"
-              className={`topbar-shortcuts-button topbar-theme-button ${theme === 'light' ? 'is-active' : ''} ${theme === 'black' ? 'is-black-theme' : ''}`}
-              onClick={onToggleTheme}
-              title={`切换${getNextThemeLabel(theme)}主题`}
-              aria-label={`切换${getNextThemeLabel(theme)}主题`}
-            >
-              {theme === 'dark' ? (
-                <Circle size={14} aria-hidden="true" />
-              ) : theme === 'black' ? (
-                <Sun size={14} aria-hidden="true" />
-              ) : (
-                <Moon size={14} aria-hidden="true" />
-              )}
-              <span>{getNextThemeLabel(theme)}</span>
-            </button>
+          {showStandaloneMore ? (
+            <div className={`topbar-more${moreOpen ? ' is-open' : ''}`} ref={moreRef}>
+              <button
+                type="button"
+                className={`topbar-icon-button${moreOpen ? ' is-active' : ''}`}
+                onClick={() => setMoreOpen((prev) => !prev)}
+                title="更多"
+                aria-label="更多"
+                aria-haspopup="menu"
+                aria-expanded={moreOpen}
+              >
+                <Ellipsis size={15} aria-hidden="true" />
+              </button>
+              {moreOpen ? (
+                <div className="topbar-more-menu" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="topbar-more-item"
+                    onClick={() => runMore(onOpenCustomerService)}
+                  >
+                    <MessageCircle size={15} aria-hidden="true" />
+                    <span>联系客服</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="topbar-more-item"
+                    onClick={() => runMore(onOpenKeyboardShortcuts)}
+                  >
+                    <Keyboard size={15} aria-hidden="true" />
+                    <span>快捷键</span>
+                    <kbd>?</kbd>
+                  </button>
+                  {onToggleTheme ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="topbar-more-item"
+                      onClick={() => runMore(onToggleTheme)}
+                    >
+                      {theme === 'dark' ? (
+                        <Circle size={15} aria-hidden="true" />
+                      ) : theme === 'black' ? (
+                        <Sun size={15} aria-hidden="true" />
+                      ) : (
+                        <Moon size={15} aria-hidden="true" />
+                      )}
+                      <span>切换{getNextThemeLabel(theme)}主题</span>
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
           ) : null}
 
           <span
-            className={`sync-chip ${cloudMeta.className}`}
+            className={`sync-chip sync-chip-compact ${cloudMeta.className}`}
             title={syncedHint || cloudMeta.label}
           >
             <CloudIcon size={14} aria-hidden="true" className={cloudMeta.spin ? 'sync-chip-spin' : ''} />
-            <span>{cloudMeta.label}</span>
           </span>
+
+          {userProfile ? (
+            <UserAvatarMenu
+              user={userProfile}
+              compact
+              onRecharge={onRecharge}
+              onInbox={onOpenInbox}
+              inboxUnread={inboxUnread}
+              onLogout={onLogout}
+              onOpenCustomerService={onOpenCustomerService}
+              onOpenKeyboardShortcuts={onOpenKeyboardShortcuts}
+              theme={theme}
+              onToggleTheme={onToggleTheme}
+            />
+          ) : null}
         </div>
       </div>
     </header>

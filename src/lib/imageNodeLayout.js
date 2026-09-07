@@ -27,7 +27,8 @@ function isImageUrlLike(value) {
     str.startsWith('data:image') ||
     str.startsWith('blob:') ||
     /^https?:\/\//.test(str) ||
-    str.startsWith('/demo/')
+    str.startsWith('//') ||
+    str.startsWith('/')
   );
 }
 
@@ -35,10 +36,17 @@ export function collectImageNodeOutputUrls(node) {
   if (!node || node.type !== 'image') return [];
 
   const images = Array.isArray(node.images) ? node.images.filter(Boolean) : [];
-  if (images.length > 0) return images;
-
   const content = String(node.content || '').trim();
-  if (isImageUrlLike(content)) return [content];
+  const realFromImages = images.filter((url) => !isDefaultDemoImageUrl(url));
+  if (realFromImages.length > 0) return realFromImages;
+
+  // images 仍是示例图时，优先采用已更新的真实 content
+  if (content && isImageUrlLike(content) && !isDefaultDemoImageUrl(content)) {
+    return [content];
+  }
+
+  if (images.length > 0) return images;
+  if (content && isImageUrlLike(content)) return [content];
 
   return [];
 }

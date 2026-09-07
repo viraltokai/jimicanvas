@@ -31,9 +31,11 @@ import {
   DEFAULT_AUDIO_VOICE,
   DEFAULT_AUDIO_SPEED,
   DEFAULT_AUDIO_MODEL,
+  DEFAULT_TEXT_MODE,
   MIN_CANVAS_SCALE,
   DEFAULT_CANVAS_BACKGROUND,
 } from './constants';
+import { resolvePreferredTextModel } from './textModel';
 import { computeImageOutputSize, parseRatioValue } from './imageNodeLayout';
 import { buildVideoNodeLayoutPatch } from './videoNodeLayout';
 
@@ -142,7 +144,9 @@ export function createNode(type, x, y) {
     type: 'note',
     title: '文本节点',
     prompt: '',
-    content: '选择文本节点后，在下方输入文字并运行。',
+    content: '双击并编辑',
+    textModel: resolvePreferredTextModel(),
+    textMode: DEFAULT_TEXT_MODE,
     x,
     y,
     width: DEFAULT_NODE_WIDTH,
@@ -160,6 +164,8 @@ export function createDocument(name, withStarterNodes = true) {
           title: '欢迎使用',
           prompt: '',
           content: '这是一个轻量画布。点击文本节点，在下方输入文字后运行或翻译。',
+          textModel: resolvePreferredTextModel(),
+          textMode: DEFAULT_TEXT_MODE,
           x: 120,
           y: 100,
           width: DEFAULT_NODE_WIDTH,

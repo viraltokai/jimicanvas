@@ -17,14 +17,17 @@ import {
   X,
   Scissors,
   Check,
-  Sparkles,
   SlidersHorizontal,
+  ChevronDown,
 } from 'lucide-react';
 import { getNoteContentStyleCss } from '../lib/noteContentStyle';
 import {
   DEFAULT_NODE_HEIGHT,
   DEFAULT_NODE_WIDTH,
   DEFAULT_TEXT_MODEL,
+  TEXT_MODEL_OPTIONS,
+  TEXT_MODE_OPTIONS,
+  DEFAULT_TEXT_MODE,
   getImageCountOptions,
   getVideoCountOptions,
   getVideoDurationOptions,
@@ -36,6 +39,7 @@ import {
   grokRequiresReferenceImage,
   IMAGE_MODEL_OPTIONS,
   getVisibleImageModelOptions,
+  getGroupedImageModelOptions,
   getImageRatioOptions,
   getImageResolutionOptions,
   getImageQualityOptions,
@@ -50,6 +54,8 @@ import {
   SEEDANCE_933_ENABLED,
   VIDEO_FAMILY_OPTIONS,
   VEO_GENERATION_TYPE_OPTIONS,
+  SEEDANCE_INPUT_MODE_OPTIONS,
+  normalizeSeedanceInputMode,
   DEFAULT_IMAGE_URL,
   DEFAULT_VIDEO_URL,
   PLACEHOLDER_IMAGE,
@@ -73,6 +79,7 @@ import {
   DEFAULT_AUDIO_MODEL,
 } from '../lib/constants';
 import { getStoredChatToken } from '../lib/jimiaigoApi';
+import { normalizeTextModel, persistPreferredTextModel } from '../lib/textModel';
 import {
   getSd2ManxueAssetList,
   getSoraRouteVisibility,
@@ -84,10 +91,8 @@ import { isImageContent, isVideoContent, isAudioContent } from '../lib/canvas';
 import { normalizeAudioUrl, AUDIO_FILE_ACCEPT, filterAudioFiles } from '../lib/audioApi';
 import {
   formatImageInputLabel,
-  formatTextInputLabel,
   formatVideoInputLabel,
   getImageNodeOutputUrl,
-  getTextInputPreview,
   getVideoNodeOutputUrl,
   isImageToPromptNode,
   isVideoToPromptNode,
@@ -110,7 +115,10 @@ import { calculateEstimatedCost } from '../lib/pricing';
 import JimicoinIcon from './JimicoinIcon';
 import { CustomSelect } from './CustomSelect';
 import { NodeGenerationState } from './NodeGenerationState';
-import { ReferenceImageChip, ReferencePromptInput } from './ReferencePromptControls';
+import { ReferenceImageChip, ReferencePromptInput, TextReferenceChip } from './ReferencePromptControls';
+import { VideoModelPickerPopover } from './VideoModelPickerPopover';
+import { ImageModelPickerPopover } from './ImageModelPickerPopover';
+import { ModelIcon, getImageModelIconName, getVideoFamilyIconName } from './ModelIcon';
 
 function NodeIcon({ type }) {
   if (type === 'image') return <ImageIcon size={14} />;
@@ -330,18 +338,24 @@ function NoteBody({ node, isSelected, isRunning, onBeginDrag, onOpenTextEdit }) 
     );
   }
 
+  const displayContent = String(node.content || '').trim() || (
+    node.textMode === 'ai' ? '运行后显示结果' : '双击并编辑'
+  );
+  const isPlaceholder =
+    displayContent === '双击并编辑' || displayContent === '运行后显示结果';
+
   return (
     <div className="node-field-wrap node-text-display-wrap">
       {isSelected ? (
         <NodeEnlargeButton title="放大编辑结果" onClick={(event) => openContentEdit(event)} />
       ) : null}
       <div
-        className="node-text-display"
+        className={`node-text-display${isPlaceholder ? ' is-placeholder' : ''}`}
         style={contentStyleCss}
         onPointerDown={(event) => onBeginDrag(event, node)}
         onDoubleClick={(event) => openContentEdit(event)}
       >
-        {node.content || '暂无结果'}
+        {displayContent}
       </div>
     </div>
   );
@@ -520,7 +534,9 @@ function useVideoOutputLayout(node, displayVideo, onSyncOutputLayout) {
   onSyncOutputLayoutRef.current = onSyncOutputLayout;
 
   useEffect(() => {
-    if (displayVideo) return undefined;
+    // 真实成片按 metadata 适配；示例/空节点跟设置比例走，方便统一放大横屏默认尺寸
+    const isDemo = !displayVideo || isDefaultDemoMediaUrl(displayVideo, DEFAULT_VIDEO_URL);
+    if (!isDemo) return undefined;
 
     const layout = buildVideoNodeLayoutPatch(node);
     const signature = `${layout.width}x${layout.height}x${layout.outputAspectCss}`;
@@ -697,7 +713,10 @@ function VideoBody({
     if (loadedAspectRef.current === signature) return;
     loadedAspectRef.current = signature;
 
-    applyVideoNodeLayout(node, onSyncOutputLayout, aspectWidth, aspectHeight);
+    // 内置示例视频是竖屏素材，不要用其真实比例覆盖节点默认横屏布局
+    if (!isDefaultDemoMediaUrl(displayVideo, DEFAULT_VIDEO_URL)) {
+      applyVideoNodeLayout(node, onSyncOutputLayout, aspectWidth, aspectHeight);
+    }
     if (hoverPreviewRef.current) {
       startHoverPreview();
     }
@@ -1468,6 +1487,7 @@ export function VideoToolbar({
   const [activePopover, setActivePopover] = useState(null); // 'model' | 'params' | null
   const [soraVisibility, setSoraVisibility] = useState(() => normalizeSoraRouteVisibility());
   const popoverRef = useRef(null);
+  const modelTriggerRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -1488,10 +1508,9 @@ export function VideoToolbar({
   }, []);
 
   useEffect(() => {
-    if (!activePopover) return;
+    if (!activePopover || activePopover === 'model') return;
     const handleOutsideClick = (event) => {
       if (popoverRef.current && !popoverRef.current.contains(event.target)) {
-        // Keep open when clicking either trigger button
         if (event.target.closest?.('.settings-trigger-btn')) return;
         setActivePopover(null);
       }
@@ -1527,14 +1546,17 @@ export function VideoToolbar({
   const isMinimax = family === 'minimax';
   const isWan30 = family === 'wan30';
   const veoGenerationType = node.videoGenerationType || 'frame';
+  const seedanceInputMode = isSeedance
+    ? normalizeSeedanceInputMode(node.videoGenerationType, node)
+    : 'frame';
   const flux3Mode = node.videoFlux3Mode || 't2v';
   const showVeoReferenceImages = isVeo && veoGenerationType === 'reference';
-  const seedanceReferenceMode = isSeedance && assetReferences.length > 0;
+  const seedanceReferenceMode = isSeedance && seedanceInputMode === 'reference';
   const showSeedanceReferenceImages = seedanceReferenceMode;
-  const showSeedanceFrames = isSeedance && !seedanceReferenceMode;
+  const showSeedanceFrames = isSeedance && seedanceInputMode === 'frame';
   const hasSeedanceFrames = showSeedanceFrames && Boolean(resolvedFirstFrame || resolvedLastFrame);
   const hasSeedanceReferenceImages = seedanceReferenceMode && resolvedReferences.length > 0;
-  const showSeedanceReferenceMedia = isSeedance && !hasSeedanceFrames;
+  const showSeedanceReferenceMedia = seedanceReferenceMode;
   const showMinimaxFrames = isMinimax;
   const showSeedance25GzFrames = isSeedance25Gz;
   const hasSeedance25GzFrames = showSeedance25GzFrames && Boolean(resolvedFirstFrame || resolvedLastFrame);
@@ -1665,8 +1687,12 @@ export function VideoToolbar({
     return buildVideoNodeLayoutPatch({ ...node, ...overrides });
   }
 
-  function applyFamilyChange(nextFamily) {
-    const nextSettings = normalizeVideoModelSettings({ family: nextFamily });
+  function applyFamilyChange(nextFamily, preferredModel) {
+    const nextSettings = normalizeVideoModelSettings({
+      family: nextFamily,
+      model: preferredModel,
+      generationType: node.videoGenerationType,
+    });
     const patch = {
       videoFamily: nextFamily,
       videoModel: nextSettings.model,
@@ -1682,7 +1708,10 @@ export function VideoToolbar({
     };
 
     if (nextFamily === 'veo') {
-      patch.videoGenerationType = nextSettings.generationType;
+      patch.videoGenerationType = nextSettings.generationType || 'frame';
+    } else if (nextFamily === 'seedance') {
+      patch.videoGenerationType =
+        nextSettings.generationType || normalizeSeedanceInputMode(node.videoGenerationType, node);
     } else {
       patch.videoGenerationType = undefined;
     }
@@ -1722,11 +1751,24 @@ export function VideoToolbar({
     const patch = { videoGenerationType: value, status: 'idle' };
     if (value === 'frame') {
       patch.referenceImages = [];
-    } else {
+      patch.videoReferenceVideos = [];
+      patch.videoReferenceAudios = [];
+    } else if (value === 'reference') {
       patch.videoFirstFrame = null;
       patch.videoLastFrame = null;
+    } else {
+      // t2v
+      patch.referenceImages = [];
+      patch.videoFirstFrame = null;
+      patch.videoLastFrame = null;
+      patch.videoReferenceVideos = [];
+      patch.videoReferenceAudios = [];
     }
     onUpdateNode(node.id, patch);
+  }
+
+  function applySeedanceInputModeChange(value) {
+    applyVeoGenerationTypeChange(value);
   }
 
   function removeVideoReferenceAt(index) {
@@ -1876,7 +1918,6 @@ export function VideoToolbar({
         groups={familyGroups}
         onChange={(nextFamily) => {
           applyFamilyChange(nextFamily);
-          setActivePopover(null);
         }}
       />
       {modelOptions.length > 1 ? (
@@ -1886,7 +1927,6 @@ export function VideoToolbar({
           options={modelOptions}
           onChange={(value) => {
             applyModelChange(value);
-            setActivePopover(null);
           }}
         />
       ) : isSeedance ? (
@@ -1931,6 +1971,14 @@ export function VideoToolbar({
           value={normalizedSettings.generationType || 'frame'}
           options={VEO_GENERATION_TYPE_OPTIONS}
           onChange={applyVeoGenerationTypeChange}
+        />
+      ) : null}
+      {isSeedance ? (
+        <OptionSegment
+          title="输入模式"
+          value={seedanceInputMode}
+          options={SEEDANCE_INPUT_MODE_OPTIONS}
+          onChange={applySeedanceInputModeChange}
         />
       ) : null}
       {isFlux3 ? (
@@ -2089,22 +2137,14 @@ export function VideoToolbar({
             )}
             {hasTextInput ? (
               <div className="image-reference-row">
-                <span className="image-reference-label">文本引用</span>
-                <div className="image-reference-list">
-                  {textInputLinks.map(({ linkId, node: textNode }) => (
-                    <div className="text-reference-chip" key={linkId}>
-                      <FileText size={14} />
-                      <span className="text-reference-preview" title={getTextInputPreview(textNode) || '空文本'}>
-                        {formatTextInputLabel(textNode)}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => onRemoveTextReference(linkId)}
-                        title="移除文本引用并断开连线"
-                      >
-                        <X size={11} />
-                      </button>
-                    </div>
+                      <div className="image-reference-list">
+                  {textInputLinks.map(({ linkId, node: textNode }, index) => (
+                    <TextReferenceChip
+                      key={linkId}
+                      index={index}
+                      textNode={textNode}
+                      onRemove={() => onRemoveTextReference(linkId)}
+                    />
                   ))}
                 </div>
               </div>
@@ -2126,7 +2166,6 @@ export function VideoToolbar({
                   optional
                   image={resolvedLastFrame}
                   disabled={isRunning || !resolvedFirstFrame}
-                  blockedHint={!resolvedFirstFrame ? '请先选择首帧' : ''}
                   onPick={() => {
                     if (!resolvedFirstFrame) return;
                     onOpenAssetLibrary(node.id, 'veo-last');
@@ -2192,8 +2231,28 @@ export function VideoToolbar({
               </div>
             ) : null}
             {isSeedance ? (
+              <div className="seedance-mode-switch" role="tablist" aria-label="Seedance 输入模式">
+                {SEEDANCE_INPUT_MODE_OPTIONS.map((option) => {
+                  const isActive = seedanceInputMode === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      className={`seedance-mode-switch-btn${isActive ? ' is-active' : ''}`}
+                      disabled={isRunning}
+                      onClick={() => applySeedanceInputModeChange(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+            {isSeedance ? (
               <p className="video-manxue-hint">
-                参考图与首尾帧互斥；已选首尾帧时不可添加参考视频/音频。素材需从满血版素材库选择。
+                先选择模式：全能参考、文生视频、首尾帧互斥。素材需从满血版素材库选择。
               </p>
             ) : null}
             {showSeedanceFrames ? (
@@ -2212,7 +2271,6 @@ export function VideoToolbar({
                     optional
                     image={resolvedLastFrame}
                     disabled={isRunning || !resolvedFirstFrame}
-                    blockedHint={!resolvedFirstFrame ? '请先选择首帧' : ''}
                     onPick={() => {
                       if (!resolvedFirstFrame) return;
                       onOpenAssetLibrary(node.id, 'seedance-last');
@@ -2263,9 +2321,12 @@ export function VideoToolbar({
     modelOptions.length > 1 && modelOptionLabel && modelOptionLabel !== familyLabel
       ? `${familyLabel} · ${modelOptionLabel}`
       : familyLabel;
+  const videoModelIconName =
+    familyGroups.find((group) => group.options?.some((option) => option.value === family))?.options?.find(
+      (option) => option.value === family
+    )?.icon || getVideoFamilyIconName(family);
 
-  const settingsContent = activePopover === 'model' ? videoModelPanels : videoParamPanels;
-
+  const settingsContent = activePopover === 'params' ? videoParamPanels : null;
 
   const showRefImageBtn = showVeoReferenceImages || showGenericReferenceImages || showFlux3ReferenceImages;
   const maxRefImageCount = showVeoReferenceImages
@@ -2335,7 +2396,7 @@ export function VideoToolbar({
                     onPreview={() => previewReferenceAt(index)}
                     onRemove={() => {
                       if (isConnection) {
-                        onRemoveImageReference(image.linkId);
+                        onRemoveTextReference(image.linkId);
                       } else if (assetIndex >= 0) {
                         const nextRefs = [...assetReferences];
                         nextRefs.splice(assetIndex, 1);
@@ -2350,6 +2411,25 @@ export function VideoToolbar({
           </div>
         ) : isSeedance ? (
           <>
+            <div className="seedance-mode-switch" role="tablist" aria-label="Seedance 输入模式">
+              {SEEDANCE_INPUT_MODE_OPTIONS.map((option) => {
+                const isActive = seedanceInputMode === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    className={`seedance-mode-switch-btn${isActive ? ' is-active' : ''}`}
+                    disabled={isRunning}
+                    onClick={() => applySeedanceInputModeChange(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+
             {showSeedanceFrames ? (
               <div className="seedance-above-prompt">
                 <div className="seedance-above-row">
@@ -2365,7 +2445,6 @@ export function VideoToolbar({
                     optional
                     image={resolvedLastFrame}
                     disabled={isRunning || !resolvedFirstFrame}
-                    blockedHint={!resolvedFirstFrame ? '请先选择首帧' : ''}
                     onPick={() => {
                       if (!resolvedFirstFrame) return;
                       onOpenAssetLibrary(node.id, 'seedance-last');
@@ -2387,33 +2466,77 @@ export function VideoToolbar({
                     onClear={() => onUpdateNode(node.id, { referenceImages: [] })}
                   />
                 </div>
+                {resolvedReferences.length > 1 ? (
+                  <div className="image-reference-list seedance-extra-refs">
+                    {resolvedReferences.slice(1).map((image, index) => (
+                      <ReferenceImageChip
+                        key={image.id || image.url || index + 1}
+                        image={image}
+                        index={index + 1}
+                        previewSrc={referencePreviewSrc(image)}
+                        onPreview={() => previewReferenceAt(index + 1)}
+                        onRemove={() => removeVideoReferenceAt(index + 1)}
+                        removeTitle="移除参考图"
+                      />
+                    ))}
+                  </div>
+                ) : null}
               </div>
-            ) : (
-              <div className="seedance-above-prompt">
-                <div className="seedance-above-row">
-                  <VeoFrameSlot
-                    label="参考图"
-                    image={undefined}
-                    disabled={isRunning}
-                    onPick={() => onOpenAssetLibrary(node.id, 'seedance-reference')}
-                    onClear={() => {}}
-                  />
-                </div>
-              </div>
-            )}
+            ) : null}
           </>
         ) : null
       ) : (
         isSeedance ? (
           <div className="seedance-section seedance-first-frame-select">
-            <div className="seedance-section-title">参考图</div>
-            <VeoFrameSlot
-              label="参考图"
-              image={resolvedReferences[0]}
-              disabled={isRunning}
-              onPick={() => onOpenAssetLibrary(node.id, 'seedance-reference')}
-              onClear={() => onUpdateNode(node.id, { referenceImages: [] })}
-            />
+            <div className="seedance-mode-switch" role="tablist" aria-label="Seedance 输入模式">
+              {SEEDANCE_INPUT_MODE_OPTIONS.map((option) => {
+                const isActive = seedanceInputMode === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    className={`seedance-mode-switch-btn${isActive ? ' is-active' : ''}`}
+                    disabled={isRunning}
+                    onClick={() => applySeedanceInputModeChange(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            {showSeedanceFrames ? (
+              <div className="veo-frame-row seedance-frame-row">
+                <VeoFrameSlot
+                  label="首帧"
+                  image={resolvedFirstFrame}
+                  disabled={isRunning}
+                  onPick={() => onOpenAssetLibrary(node.id, 'seedance-first')}
+                  onClear={clearResolvedFirstFrame}
+                />
+                <VeoFrameSlot
+                  label="尾帧"
+                  optional
+                  image={resolvedLastFrame}
+                  disabled={isRunning || !resolvedFirstFrame}
+                  onPick={() => {
+                    if (!resolvedFirstFrame) return;
+                    onOpenAssetLibrary(node.id, 'seedance-last');
+                  }}
+                  onClear={clearResolvedLastFrame}
+                />
+              </div>
+            ) : null}
+            {seedanceReferenceMode ? (
+              <VeoFrameSlot
+                label="参考图"
+                image={resolvedReferences[0]}
+                disabled={isRunning}
+                onPick={() => onOpenAssetLibrary(node.id, 'seedance-reference')}
+                onClear={() => onUpdateNode(node.id, { referenceImages: [] })}
+              />
+            ) : null}
           </div>
         ) : showGenericReferenceImages || showFlux3ReferenceImages ? (
           <div className="image-reference-row image-reference-row-top">
@@ -2436,7 +2559,7 @@ export function VideoToolbar({
                     onPreview={() => previewReferenceAt(index)}
                     onRemove={() => {
                       if (isConnection) {
-                        onRemoveImageReference(image.linkId);
+                        onRemoveTextReference(image.linkId);
                       } else if (assetIndex >= 0) {
                         const nextRefs = [...assetReferences];
                         nextRefs.splice(assetIndex, 1);
@@ -2478,7 +2601,7 @@ export function VideoToolbar({
                     onPreview={() => previewReferenceAt(index)}
                     onRemove={() => {
                       if (isConnection) {
-                        onRemoveImageReference(image.linkId);
+                        onRemoveTextReference(image.linkId);
                       } else if (assetIndex >= 0) {
                         const nextRefs = [...assetReferences];
                         nextRefs.splice(assetIndex, 1);
@@ -2505,22 +2628,14 @@ export function VideoToolbar({
       )}
       {hasTextInput ? (
         <div className="image-reference-row">
-          <span className="image-reference-label">文本引用</span>
           <div className="image-reference-list">
-            {textInputLinks.map(({ linkId, node: textNode }) => (
-              <div className="text-reference-chip" key={linkId}>
-                <FileText size={14} />
-                <span className="text-reference-preview" title={getTextInputPreview(textNode) || '空文本'}>
-                  {formatTextInputLabel(textNode)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => onRemoveTextReference(linkId)}
-                  title="移除文本引用并断开连线"
-                >
-                  <X size={11} />
-                </button>
-              </div>
+            {textInputLinks.map(({ linkId, node: textNode }, index) => (
+              <TextReferenceChip
+                key={linkId}
+                index={index}
+                textNode={textNode}
+                onRemove={() => onRemoveTextReference(linkId)}
+              />
             ))}
           </div>
         </div>
@@ -2549,23 +2664,50 @@ export function VideoToolbar({
 
       {variant === 'modal' ? (
         videoSettingsPanels
-      ) : isSeedance ? (
-        showSettingsPopover && (
-          <div className="toolbar-settings-inline" ref={popoverRef} data-popover={activePopover}>
-            {settingsContent}
-          </div>
-        )
       ) : (
-        showSettingsPopover && (
-          <div
-            className={`toolbar-settings-popover toolbar-settings-popover--${activePopover}`}
-            ref={popoverRef}
-            data-popover={activePopover}
-          >
-            {settingsContent}
-          </div>
+        showSettingsPopover &&
+        activePopover === 'params' && (
+          isSeedance ? (
+            <div className="toolbar-settings-inline" ref={popoverRef} data-popover={activePopover}>
+              {settingsContent}
+            </div>
+          ) : (
+            <div
+              className={`toolbar-settings-popover toolbar-settings-popover--${activePopover}`}
+              ref={popoverRef}
+              data-popover={activePopover}
+            >
+              {settingsContent}
+            </div>
+          )
         )
       )}
+
+      {variant !== 'modal' && activePopover === 'model' ? (
+        <VideoModelPickerPopover
+          anchorRef={modelTriggerRef}
+          family={family}
+          model={normalizedSettings.model}
+          familyGroups={familyGroups}
+          soraVisibility={soraVisibility}
+          onPickFamily={(nextFamily) => {
+            applyFamilyChange(nextFamily);
+            const nextModels = getVideoModelOptionsForVisibility(nextFamily, soraVisibility);
+            if (nextModels.length <= 1) {
+              setActivePopover(null);
+            }
+          }}
+          onPickModel={(nextFamily, nextModel) => {
+            if (nextFamily === family) {
+              applyModelChange(nextModel);
+            } else {
+              applyFamilyChange(nextFamily, nextModel);
+            }
+            setActivePopover(null);
+          }}
+          onClose={() => setActivePopover(null)}
+        />
+      ) : null}
 
       {isVeo && veoGenerationType === 'frame' ? (
         <div className="veo-frame-row">
@@ -2581,7 +2723,6 @@ export function VideoToolbar({
             optional
             image={resolvedLastFrame}
             disabled={isRunning || !resolvedFirstFrame}
-            blockedHint={!resolvedFirstFrame ? '请先选择首帧' : ''}
             onPick={() => {
               if (!resolvedFirstFrame) return;
               onOpenAssetLibrary(node.id, 'veo-last');
@@ -2652,6 +2793,7 @@ export function VideoToolbar({
         {variant !== 'modal' && (
           <>
             <button
+              ref={modelTriggerRef}
               type="button"
               className={`icon-button settings-trigger-btn ${activePopover === 'model' ? 'active' : ''}`}
               onClick={(e) => {
@@ -2660,8 +2802,9 @@ export function VideoToolbar({
               }}
               title="选择模型"
             >
-              <Film size={14} />
+              <ModelIcon name={videoModelIconName} size={14} />
               <span>{modelTriggerText}</span>
+              <ChevronDown size={12} />
             </button>
             <button
               type="button"
@@ -2678,22 +2821,24 @@ export function VideoToolbar({
           </>
         )}
 
-        <button
-          className="icon-button"
-          onClick={() => onRunVideoGeneration(node, 'translate')}
-          title="翻译提示词"
-          disabled={isTranslating || isRunning || isPromptEmpty}
-        >
-          {isTranslating ? <LoaderCircle size={14} className="spin-icon" /> : <Languages size={14} />}
-          翻译
-        </button>
-        <RunActionButton
-          title="运行视频生成"
-          isRunning={isRunning}
-          disabled={isRunning || isTranslating || isPromptEmpty}
-          cost={pricingList ? videoCost : null}
-          onClick={() => onRunVideoGeneration(node)}
-        />
+        <div className="node-run-actions">
+          <button
+            className="icon-button"
+            onClick={() => onRunVideoGeneration(node, 'translate')}
+            title="翻译提示词"
+            disabled={isTranslating || isRunning || isPromptEmpty}
+          >
+            {isTranslating ? <LoaderCircle size={14} className="spin-icon" /> : <Languages size={14} />}
+            翻译
+          </button>
+          <RunActionButton
+            title="运行视频生成"
+            isRunning={isRunning}
+            disabled={isRunning || isTranslating || isPromptEmpty}
+            cost={pricingList ? videoCost : null}
+            onClick={() => onRunVideoGeneration(node)}
+          />
+        </div>
       </div>
     </div>
   );
@@ -2718,9 +2863,10 @@ export function ImageToolbar({
 }) {
   const [activePopover, setActivePopover] = useState(null); // 'model' | 'params' | null
   const popoverRef = useRef(null);
+  const modelTriggerRef = useRef(null);
 
   useEffect(() => {
-    if (!activePopover) return;
+    if (!activePopover || activePopover === 'model') return;
     const handleOutsideClick = (event) => {
       if (popoverRef.current && !popoverRef.current.contains(event.target)) {
         if (event.target.closest?.('.settings-trigger-btn')) return;
@@ -2742,6 +2888,7 @@ export function ImageToolbar({
   const assetReferences = Array.isArray(node.referenceImages) ? node.referenceImages : [];
   const resolvedReferences = mergeImageReferenceImages(node, imageInputLinks);
   const modelOptions = getVisibleImageModelOptions(node.imageModel);
+  const modelGroups = getGroupedImageModelOptions(node.imageModel);
   const model = node.imageModel || modelOptions[0]?.value || IMAGE_MODEL_OPTIONS[0].value;
   const maxReferenceCount = getImageReferenceMax(model);
   const resolutionOptions = getImageResolutionOptions(model);
@@ -2779,6 +2926,10 @@ export function ImageToolbar({
     modelOptions.find((option) => option.value === model)?.label ||
     IMAGE_MODEL_OPTIONS.find((option) => option.value === model)?.label ||
     model.replace(/^gpt-image-/, 'GPT-').toUpperCase();
+  const modelIconName =
+    modelOptions.find((option) => option.value === model)?.icon ||
+    IMAGE_MODEL_OPTIONS.find((option) => option.value === model)?.icon ||
+    getImageModelIconName(model);
   const summaryParts = [
     normalizedSettings.resolution,
     qualityOptions.length > 0 ? (normalizedSettings.quality || 'auto') : '',
@@ -2787,6 +2938,27 @@ export function ImageToolbar({
   ].filter(Boolean);
   const summaryText = summaryParts.join(' | ') || '参数';
 
+  function applyImageModelChange(value) {
+    const nextSettings = normalizeImageModelSettings({
+      model: value,
+      resolution: node.imageResolution,
+      ratio: node.imageRatio,
+      count: node.imageCount,
+      quality: node.imageQuality,
+    });
+    onUpdateNode(node.id, {
+      imageModel: value,
+      imageResolution: nextSettings.resolution,
+      imageRatio: nextSettings.ratio,
+      imageCount: nextSettings.count,
+      imageQuality: nextSettings.quality,
+      ...patchLayoutForEmptyNode({
+        imageRatio: nextSettings.ratio,
+        imageCount: nextSettings.count,
+      }),
+    });
+  }
+
   const imageModelPanels = (
     <div className="settings-options-stack">
       <OptionSegment
@@ -2794,24 +2966,7 @@ export function ImageToolbar({
         value={model}
         options={modelOptions}
         onChange={(value) => {
-          const nextSettings = normalizeImageModelSettings({
-            model: value,
-            resolution: node.imageResolution,
-            ratio: node.imageRatio,
-            count: node.imageCount,
-            quality: node.imageQuality,
-          });
-          onUpdateNode(node.id, {
-            imageModel: value,
-            imageResolution: nextSettings.resolution,
-            imageRatio: nextSettings.ratio,
-            imageCount: nextSettings.count,
-            imageQuality: nextSettings.quality,
-            ...patchLayoutForEmptyNode({
-              imageRatio: nextSettings.ratio,
-              imageCount: nextSettings.count,
-            }),
-          });
+          applyImageModelChange(value);
           setActivePopover(null);
         }}
       />
@@ -2869,11 +3024,9 @@ export function ImageToolbar({
         {imageModelPanels}
         {imageParamPanels}
       </div>
-    ) : activePopover === 'model' ? (
-      imageModelPanels
-    ) : (
+    ) : activePopover === 'params' ? (
       imageParamPanels
-    );
+    ) : null;
 
   const extraActions = (
     <>
@@ -2915,7 +3068,7 @@ export function ImageToolbar({
                   onPreview={() => previewReferenceAt(index)}
                   onRemove={() => {
                     if (isConnection) {
-                      onRemoveImageReference(image.linkId);
+                      onRemoveTextReference(image.linkId);
                     } else if (assetIndex >= 0) {
                       const nextRefs = [...assetReferences];
                       nextRefs.splice(assetIndex, 1);
@@ -2942,7 +3095,8 @@ export function ImageToolbar({
       {variant === 'modal' ? (
         settingsContent
       ) : (
-        showSettingsPopover && (
+        showSettingsPopover &&
+        activePopover === 'params' && (
           <div
             className={`toolbar-settings-popover toolbar-settings-popover--${activePopover}`}
             ref={popoverRef}
@@ -2953,24 +3107,29 @@ export function ImageToolbar({
         )
       )}
 
+      {variant !== 'modal' && activePopover === 'model' ? (
+        <ImageModelPickerPopover
+          anchorRef={modelTriggerRef}
+          model={model}
+          modelGroups={modelGroups}
+          onPickModel={(nextModel) => {
+            applyImageModelChange(nextModel);
+            setActivePopover(null);
+          }}
+          onClose={() => setActivePopover(null)}
+        />
+      ) : null}
+
       {hasTextInput ? (
         <div className="image-reference-row">
-          <span className="image-reference-label">文本引用</span>
           <div className="image-reference-list">
-            {textInputLinks.map(({ linkId, node: textNode }) => (
-              <div className="text-reference-chip" key={linkId}>
-                <FileText size={14} />
-                <span className="text-reference-preview" title={getTextInputPreview(textNode) || '空文本'}>
-                  {formatTextInputLabel(textNode)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => onRemoveTextReference(linkId)}
-                  title="移除文本引用并断开连线"
-                >
-                  <X size={11} />
-                </button>
-              </div>
+            {textInputLinks.map(({ linkId, node: textNode }, index) => (
+              <TextReferenceChip
+                key={linkId}
+                index={index}
+                textNode={textNode}
+                onRemove={() => onRemoveTextReference(linkId)}
+              />
             ))}
           </div>
         </div>
@@ -2979,6 +3138,7 @@ export function ImageToolbar({
         {variant !== 'modal' && (
           <>
             <button
+              ref={modelTriggerRef}
               type="button"
               className={`icon-button settings-trigger-btn ${activePopover === 'model' ? 'active' : ''}`}
               onClick={(e) => {
@@ -2987,8 +3147,9 @@ export function ImageToolbar({
               }}
               title="选择模型"
             >
-              <Sparkles size={14} />
+              <ModelIcon name={modelIconName} size={14} />
               <span>{modelLabel}</span>
+              <ChevronDown size={12} />
             </button>
             <button
               type="button"
@@ -3005,22 +3166,24 @@ export function ImageToolbar({
           </>
         )}
 
-        <button
-          className="icon-button"
-          onClick={() => onRunImageGeneration(node, 'translate')}
-          title="翻译提示词"
-          disabled={isTranslating || isRunning || isPromptEmpty}
-        >
-          {isTranslating ? <LoaderCircle size={14} className="spin-icon" /> : <Languages size={14} />}
-          翻译
-        </button>
-        <RunActionButton
-          title="运行图片生成"
-          isRunning={isRunning}
-          disabled={isRunning || isTranslating || isPromptEmpty}
-          cost={pricingList ? calculateEstimatedCost(pricingList, node, userProfile) : null}
-          onClick={() => onRunImageGeneration(node)}
-        />
+        <div className="node-run-actions">
+          <button
+            className="icon-button"
+            onClick={() => onRunImageGeneration(node, 'translate')}
+            title="翻译提示词"
+            disabled={isTranslating || isRunning || isPromptEmpty}
+          >
+            {isTranslating ? <LoaderCircle size={14} className="spin-icon" /> : <Languages size={14} />}
+            翻译
+          </button>
+          <RunActionButton
+            title="运行图片生成"
+            isRunning={isRunning}
+            disabled={isRunning || isTranslating || isPromptEmpty}
+            cost={pricingList ? calculateEstimatedCost(pricingList, node, userProfile) : null}
+            onClick={() => onRunImageGeneration(node)}
+          />
+        </div>
       </div>
     </div>
   );
@@ -3073,22 +3236,14 @@ function AudioToolbar({
       />
       {hasTextInput ? (
         <div className="image-reference-row">
-          <span className="image-reference-label">文本引用</span>
           <div className="image-reference-list">
-            {textInputLinks.map(({ linkId, node: textNode }) => (
-              <div className="text-reference-chip" key={linkId}>
-                <FileText size={14} />
-                <span className="text-reference-preview" title={getTextInputPreview(textNode) || '空文本'}>
-                  {formatTextInputLabel(textNode)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => onRemoveTextReference(linkId)}
-                  title="移除文本引用并断开连线"
-                >
-                  <X size={11} />
-                </button>
-              </div>
+            {textInputLinks.map(({ linkId, node: textNode }, index) => (
+              <TextReferenceChip
+                key={linkId}
+                index={index}
+                textNode={textNode}
+                onRemove={() => onRemoveTextReference(linkId)}
+              />
             ))}
           </div>
         </div>
@@ -3139,153 +3294,189 @@ function NoteToolbar({
   const canRunText = !reversePromptMode && !isPromptEmpty;
   const hasReverseResult = Boolean(String(node.content || '').trim()) && node.status !== 'error';
   const canTranslateReverse = reversePromptMode && hasReverseResult;
+  const textMode = reversePromptMode
+    ? 'ai'
+    : node.textMode === 'ai'
+      ? 'ai'
+      : DEFAULT_TEXT_MODE;
+  const showAiPanel = textMode === 'ai' || reversePromptMode;
 
   return (
-    <div className="node-bottom-toolbar" onPointerDown={(event) => event.stopPropagation()}>
-      {videoToPromptMode && videoInputLinks.length > 0 ? (
-        <div className="image-reference-row">
-          <span className="image-reference-label">视频引用</span>
-          <div className="image-reference-list">
-            {videoInputLinks.map(({ linkId, node: videoNode }) => {
-              const previewUrl = getVideoNodeOutputUrl(videoNode);
-              return (
-                <div className="image-reference-chip connection-image-chip" key={linkId}>
-                  {previewUrl ? (
-                    <video
-                      className="connection-video-thumb"
-                      src={normalizeVideoUrl(previewUrl)}
-                      muted
-                      playsInline
-                      preload="metadata"
-                    />
-                  ) : (
-                    <div className="connection-image-placeholder">
-                      <Film size={16} />
-                    </div>
-                  )}
-                  <span className="connection-image-label" title={formatVideoInputLabel(videoNode)}>
-                    {formatVideoInputLabel(videoNode)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => onRemoveTextReference(linkId)}
-                    title="移除视频引用并断开连线"
-                  >
-                    <X size={11} />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+    <div className="node-bottom-toolbar note-toolbar" onPointerDown={(event) => event.stopPropagation()}>
+      {!reversePromptMode ? (
+        <div className="note-mode-switch" role="tablist" aria-label="文本来源">
+          {TEXT_MODE_OPTIONS.map((option) => {
+            const isActive = textMode === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                className={`note-mode-switch-btn${isActive ? ' is-active' : ''}`}
+                onClick={() => onUpdateNode(node.id, { textMode: option.value })}
+              >
+                {option.value === 'ai' ? <Bot size={14} aria-hidden="true" /> : <FileText size={14} aria-hidden="true" />}
+                <span>{option.label}</span>
+              </button>
+            );
+          })}
         </div>
       ) : null}
-      {imageToPromptMode && imageInputLinks.length > 0 ? (
-        <div className="image-reference-row">
-          <span className="image-reference-label">图片引用</span>
-          <div className="image-reference-list">
-            {imageInputLinks.map(({ linkId, node: imageNode }) => {
-              const previewUrl = getImageNodeOutputUrl(imageNode);
-              return (
-                <div className="image-reference-chip connection-image-chip" key={linkId}>
-                  {previewUrl ? (
-                    <img src={normalizeImageUrl(previewUrl)} alt={formatImageInputLabel(imageNode)} />
-                  ) : (
-                    <div className="connection-image-placeholder">
-                      <ImageIcon size={16} />
+
+      {showAiPanel ? (
+        <>
+          {videoToPromptMode && videoInputLinks.length > 0 ? (
+            <div className="image-reference-row">
+              <span className="image-reference-label">视频引用</span>
+              <div className="image-reference-list">
+                {videoInputLinks.map(({ linkId, node: videoNode }) => {
+                  const previewUrl = getVideoNodeOutputUrl(videoNode);
+                  return (
+                    <div className="image-reference-chip connection-image-chip" key={linkId}>
+                      {previewUrl ? (
+                        <video
+                          className="connection-video-thumb"
+                          src={normalizeVideoUrl(previewUrl)}
+                          muted
+                          playsInline
+                          preload="metadata"
+                        />
+                      ) : (
+                        <div className="connection-image-placeholder">
+                          <Film size={16} />
+                        </div>
+                      )}
+                      <span className="connection-image-label" title={formatVideoInputLabel(videoNode)}>
+                        {formatVideoInputLabel(videoNode)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => onRemoveTextReference(linkId)}
+                        title="移除视频引用并断开连线"
+                      >
+                        <X size={11} />
+                      </button>
                     </div>
-                  )}
-                  <span className="connection-image-label" title={formatImageInputLabel(imageNode)}>
-                    {formatImageInputLabel(imageNode)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => onRemoveTextReference(linkId)}
-                    title="移除图片引用并断开连线"
-                  >
-                    <X size={11} />
-                  </button>
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+          {imageToPromptMode && imageInputLinks.length > 0 ? (
+            <div className="image-reference-row">
+              <span className="image-reference-label">图片引用</span>
+              <div className="image-reference-list">
+                {imageInputLinks.map(({ linkId, node: imageNode }) => {
+                  const previewUrl = getImageNodeOutputUrl(imageNode);
+                  return (
+                    <div className="image-reference-chip connection-image-chip" key={linkId}>
+                      {previewUrl ? (
+                        <img src={normalizeImageUrl(previewUrl)} alt={formatImageInputLabel(imageNode)} />
+                      ) : (
+                        <div className="connection-image-placeholder">
+                          <ImageIcon size={16} />
+                        </div>
+                      )}
+                      <span className="connection-image-label" title={formatImageInputLabel(imageNode)}>
+                        {formatImageInputLabel(imageNode)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => onRemoveTextReference(linkId)}
+                        title="移除图片引用并断开连线"
+                      >
+                        <X size={11} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+          <div className="node-field-wrap node-prompt-wrap">
+            <textarea
+              className="node-prompt-input"
+              value={node.prompt || ''}
+              onChange={(event) => onUpdateNode(node.id, { prompt: event.target.value, status: 'idle' })}
+              placeholder={
+                reversePromptMode ? '可选：补充反推指令（留空则输出中文结构化 JSON）' : '输入文字，运行后生成结果'
+              }
+            />
+            <NodeEnlargeButton
+              title="放大编辑输入"
+              onClick={() => onOpenTextEdit(node.id, 'prompt')}
+            />
           </div>
-        </div>
-      ) : null}
-      <div className="node-field-wrap node-prompt-wrap">
-        <textarea
-          className="node-prompt-input"
-          value={node.prompt || ''}
-          onChange={(event) => onUpdateNode(node.id, { prompt: event.target.value, status: 'idle' })}
-          placeholder={
-            reversePromptMode ? '可选：补充反推指令（留空则输出中文结构化 JSON）' : '输入文字'
-          }
-        />
-        <NodeEnlargeButton
-          title="放大编辑输入"
-          onClick={() => onOpenTextEdit(node.id, 'prompt')}
-        />
-      </div>
-      <div className="node-bottom-actions">
-        {reversePromptMode ? (
-          <CustomSelect
-            title="能力"
-            icon={videoToPromptMode ? <Film size={14} /> : <ImageIcon size={14} />}
-            value={videoToPromptMode ? 'video-understand' : 'image-understand'}
-            options={[
-              {
-                value: videoToPromptMode ? 'video-understand' : 'image-understand',
-                label: videoToPromptMode ? '视频理解' : '图片理解',
-              },
-            ]}
-            onChange={() => {}}
-          />
-        ) : (
-          <CustomSelect
-            title="模型"
-            icon={<Bot size={14} />}
-            value={DEFAULT_TEXT_MODEL}
-            options={[{ value: DEFAULT_TEXT_MODEL, label: DEFAULT_TEXT_MODEL }]}
-            onChange={() => {}}
-          />
-        )}
-        <div className="node-run-actions">
-          {reversePromptMode ? (
-            <button
-              className="icon-button"
-              onClick={() => onRunTextGeneration(node, 'translate-structured-en')}
-              title="一键翻译反推结果为英文"
-              disabled={isTranslating || isRunning || !canTranslateReverse}
-            >
-              {isTranslating ? <LoaderCircle size={14} className="spin-icon" /> : <Languages size={14} />}
-              翻译
-            </button>
-          ) : (
-            <button
-              className="icon-button"
-              onClick={() => onRunTextGeneration(node, 'translate-en')}
-              title="一键翻译英文"
-              disabled={isTranslating || isRunning || isPromptEmpty}
-            >
-              {isTranslating ? <LoaderCircle size={14} className="spin-icon" /> : <Languages size={14} />}
-              翻译
-            </button>
-          )}
-          <button
-            className="icon-button primary"
-            onClick={() => onRunTextGeneration(node)}
-            title={
-              videoToPromptMode
-                ? '运行视频理解反推提示词'
-                : imageToPromptMode
-                  ? '运行图片理解反推提示词'
-                  : '运行文本生成'
-            }
-            disabled={isRunning || isTranslating || (!canRunReversePrompt && !canRunText)}
-          >
-            {isRunning ? <LoaderCircle size={14} className="spin-icon" /> : <Play size={14} />}
-            {reversePromptMode ? '反推' : '运行'}
-          </button>
-        </div>
-      </div>
+          <div className="node-bottom-actions">
+            {reversePromptMode ? (
+              <CustomSelect
+                title="能力"
+                icon={videoToPromptMode ? <Film size={14} /> : <ImageIcon size={14} />}
+                value={videoToPromptMode ? 'video-understand' : 'image-understand'}
+                options={[
+                  {
+                    value: videoToPromptMode ? 'video-understand' : 'image-understand',
+                    label: videoToPromptMode ? '视频理解' : '图片理解',
+                  },
+                ]}
+                onChange={() => {}}
+              />
+            ) : (
+              <CustomSelect
+                title="模型"
+                icon={<Bot size={14} />}
+                value={normalizeTextModel(node.textModel || DEFAULT_TEXT_MODEL)}
+                options={TEXT_MODEL_OPTIONS}
+                onChange={(value) => {
+                  const next = persistPreferredTextModel(value);
+                  onUpdateNode(node.id, { textModel: next });
+                }}
+              />
+            )}
+            <div className="node-run-actions">
+              {reversePromptMode ? (
+                <button
+                  className="icon-button"
+                  onClick={() => onRunTextGeneration(node, 'translate-structured-en')}
+                  title="一键翻译反推结果为英文"
+                  disabled={isTranslating || isRunning || !canTranslateReverse}
+                >
+                  {isTranslating ? <LoaderCircle size={14} className="spin-icon" /> : <Languages size={14} />}
+                  翻译
+                </button>
+              ) : (
+                <button
+                  className="icon-button"
+                  onClick={() => onRunTextGeneration(node, 'translate-en')}
+                  title="一键翻译英文"
+                  disabled={isTranslating || isRunning || isPromptEmpty}
+                >
+                  {isTranslating ? <LoaderCircle size={14} className="spin-icon" /> : <Languages size={14} />}
+                  翻译
+                </button>
+              )}
+              <button
+                className="icon-button primary"
+                onClick={() => onRunTextGeneration(node)}
+                title={
+                  videoToPromptMode
+                    ? '运行视频理解反推提示词'
+                    : imageToPromptMode
+                      ? '运行图片理解反推提示词'
+                      : '运行文本生成'
+                }
+                disabled={isRunning || isTranslating || (!canRunReversePrompt && !canRunText)}
+              >
+                {isRunning ? <LoaderCircle size={14} className="spin-icon" /> : <Play size={14} />}
+                {reversePromptMode ? '反推' : '运行'}
+              </button>
+            </div>
+          </div>
+        </>
+      ) : (
+        <p className="note-mode-hint">双击节点可直接编辑文本内容</p>
+      )}
     </div>
   );
 }

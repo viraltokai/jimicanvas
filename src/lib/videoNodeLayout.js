@@ -5,6 +5,11 @@ import {
 } from './constants';
 import { buildImageNodeLayoutPatch, parseRatioValue } from './imageNodeLayout';
 
+/** 横屏视频节点默认更宽，避免相对下方工具栏显得过小 */
+export const VIDEO_OUTPUT_LANDSCAPE_BASE_WIDTH = 460;
+export const VIDEO_OUTPUT_PORTRAIT_BASE_WIDTH = 240;
+export const VIDEO_OUTPUT_SQUARE_BASE_WIDTH = 320;
+
 export function resolveVideoAspectRatio(node = {}) {
   const family = node.videoFamily || DEFAULT_VIDEO_FAMILY;
 
@@ -29,6 +34,14 @@ export function resolveVideoAspectRatio(node = {}) {
   );
 }
 
+function resolveVideoBaseWidth(aspect) {
+  const width = Math.max(1, Number(aspect?.width) || 1);
+  const height = Math.max(1, Number(aspect?.height) || 1);
+  if (width > height * 1.05) return VIDEO_OUTPUT_LANDSCAPE_BASE_WIDTH;
+  if (height > width * 1.05) return VIDEO_OUTPUT_PORTRAIT_BASE_WIDTH;
+  return VIDEO_OUTPUT_SQUARE_BASE_WIDTH;
+}
+
 export function buildVideoNodeLayoutPatch(node = {}, aspectOverride = null) {
   const aspect =
     aspectOverride?.width && aspectOverride?.height
@@ -42,7 +55,7 @@ export function buildVideoNodeLayoutPatch(node = {}, aspectOverride = null) {
     imageCount: 1,
     aspectWidth: aspect.width,
     aspectHeight: aspect.height,
-    baseWidth: 200,
+    baseWidth: resolveVideoBaseWidth(aspect),
   });
 }
 

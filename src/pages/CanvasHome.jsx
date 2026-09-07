@@ -1,12 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BookOpen,
-  ChevronDown,
-  Crown,
   CloudUpload,
   Image,
   Loader2,
-  LogOut,
   Maximize2,
   Moon,
   MoreHorizontal,
@@ -25,6 +22,7 @@ import { InboxModal } from '../components/InboxModal';
 import { WorkflowTemplateModal } from '../components/WorkflowTemplateModal';
 import { SiteLogo } from '../components/SiteLogo';
 import { CanvasHomeBackground } from '../components/CanvasHomeBackground';
+import { UserAvatarMenu } from '../components/UserAvatarMenu';
 import { useHomeEntranceAnimation } from '../hooks/useHomeEntranceAnimation';
 import { useTheme } from '../hooks/useTheme';
 import { openCanvasEditor, getJimiaiAppBaseUrl } from '../lib/appNavigation';
@@ -40,7 +38,7 @@ import {
   parseRawDocuments,
   renameDocument,
 } from '../lib/canvasDocuments';
-import { CANVAS_TUTORIAL_URL } from '../lib/constants';
+import { CANVAS_TUTORIAL_URL, TOAST_AUTO_DISMISS_MS } from '../lib/constants';
 import { getInboxUnreadCount } from '../lib/inboxApi';
 import { getStoredChatToken, isBackendInCooldown } from '../lib/jimiaigoApi';
 import { usePageLoading } from '../lib/global-loading.js';
@@ -48,8 +46,6 @@ import { fetchSiteConfig, getDefaultSiteSettings } from '../lib/siteApi';
 import {
   clearAuthToken,
   fetchUserInfo,
-  formatBalanceAmount,
-  getUserDisplayInitial,
 } from '../lib/userApi';
 
 const RECENT_PROJECT_LIMIT = 6;
@@ -141,133 +137,6 @@ function formatProjectTime(timestamp) {
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
-}
-
-function CanvasHomeUserAvatar({ user, className = '' }) {
-  const [imageFailed, setImageFailed] = useState(false);
-  const avatarUrl = user?.avatarUrl;
-  const initial = getUserDisplayInitial(user?.nickname);
-  const classNames = ['canvas-home-user-avatar', className].filter(Boolean).join(' ');
-
-  useEffect(() => {
-    setImageFailed(false);
-  }, [avatarUrl]);
-
-  if (avatarUrl && !imageFailed) {
-    return (
-      <span className={classNames} aria-hidden="true">
-        <img
-          src={avatarUrl}
-          alt=""
-          className="canvas-home-user-avatar-img"
-          onError={() => setImageFailed(true)}
-        />
-      </span>
-    );
-  }
-
-  return (
-    <span className={classNames} aria-hidden="true">
-      <span className="canvas-home-user-avatar-fallback">{initial}</span>
-    </span>
-  );
-}
-
-function CanvasHomeUserMenu({ user, onRecharge, onInbox, inboxUnread = 0, onLogout }) {
-  const [open, setOpen] = useState(false);
-  const menuRef = useRef(null);
-  const nickname = user?.nickname || '已登录';
-  const balanceLabel = formatBalanceAmount(user?.remaining);
-  const isVip = Boolean(user?.isVip);
-  const memberLabel = isVip ? 'VIP 会员' : '普通用户';
-
-  useEffect(() => {
-    if (!open) return undefined;
-
-    const handlePointerDown = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setOpen(false);
-      }
-    };
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape') setOpen(false);
-    };
-
-    document.addEventListener('pointerdown', handlePointerDown, true);
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown, true);
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [open]);
-
-  const run = (action) => {
-    setOpen(false);
-    action?.();
-  };
-
-  return (
-    <div className={`canvas-home-user-menu${open ? ' is-open' : ''}`} ref={menuRef}>
-      <button
-        type="button"
-        className="canvas-home-user-trigger"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((prev) => !prev)}
-      >
-        <span className={`canvas-home-user-avatar-wrap${isVip ? ' is-vip' : ''}`}>
-          <CanvasHomeUserAvatar user={user} />
-          {isVip ? (
-            <span className="canvas-home-vip-badge" title="VIP 会员">
-              <Crown size={10} strokeWidth={2.5} aria-hidden="true" />
-            </span>
-          ) : null}
-        </span>
-        <span className="canvas-home-user-name">{nickname}</span>
-        <ChevronDown size={16} className="canvas-home-user-chevron" aria-hidden="true" />
-      </button>
-      {open ? (
-        <div className="canvas-home-user-dropdown" role="menu">
-          <div className="canvas-home-user-dropdown-head">
-            <span className={`canvas-home-user-avatar-wrap is-dropdown${isVip ? ' is-vip' : ''}`}>
-              <CanvasHomeUserAvatar user={user} className="is-dropdown" />
-              {isVip ? (
-                <span className="canvas-home-vip-badge is-dropdown" title="VIP 会员">
-                  <Crown size={11} strokeWidth={2.5} aria-hidden="true" />
-                </span>
-              ) : null}
-            </span>
-            <div className="canvas-home-user-dropdown-meta">
-              <div className="canvas-home-user-dropdown-title-row">
-                <strong>{nickname}</strong>
-                <span className={`canvas-home-member-badge${isVip ? ' is-vip' : ''}`}>{memberLabel}</span>
-              </div>
-              <span>可用余额 {balanceLabel}</span>
-            </div>
-          </div>
-          <button type="button" role="menuitem" className="canvas-home-user-dropdown-item" onClick={() => run(onInbox)}>
-            <Mail size={16} aria-hidden="true" />
-            <span>站内信</span>
-            {inboxUnread > 0 ? <span className="inbox-unread-badge is-menu">{inboxUnread > 99 ? '99+' : inboxUnread}</span> : null}
-          </button>
-          <button type="button" role="menuitem" className="canvas-home-user-dropdown-item" onClick={() => run(onRecharge)}>
-            <Wallet size={16} aria-hidden="true" />
-            <span>充值</span>
-          </button>
-          <div className="canvas-home-user-dropdown-divider" role="separator" />
-          <button
-            type="button"
-            role="menuitem"
-            className="canvas-home-user-dropdown-item is-danger"
-            onClick={() => run(onLogout)}
-          >
-            <LogOut size={16} aria-hidden="true" />
-            <span>{COPY.logout}</span>
-          </button>
-        </div>
-      ) : null}
-    </div>
-  );
 }
 
 function ProjectMenu({ project, onAction }) {
@@ -448,7 +317,7 @@ export function CanvasHome() {
 
   const showNotice = useCallback((message) => {
     setNotice(message);
-    window.setTimeout(() => setNotice(''), 2800);
+    window.setTimeout(() => setNotice(''), TOAST_AUTO_DISMISS_MS);
   }, []);
 
   const applyListPayload = useCallback((data) => {
@@ -825,7 +694,7 @@ export function CanvasHome() {
           </button>
           <span className="canvas-home-topbar-divider" aria-hidden="true" />
           {token ? (
-            <CanvasHomeUserMenu
+            <UserAvatarMenu
               user={user}
               onRecharge={openRechargeModal}
               onInbox={() => setShowInbox(true)}

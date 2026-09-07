@@ -1,0 +1,123 @@
+/* Bibata Cursor — https://github.com/ful1e5/Bibata_Cursor (GPL-3.0) — aligned with jimiadmin */
+:root,
+html[data-theme='light'] {
+  --bibata: /cursors/bibata/classic;
+  --jimi-cursor-default: url('/cursors/bibata/classic/left_ptr.svg') 6 2, auto;
+  --jimi-cursor-pointer: url('/cursors/bibata/classic/hand2.svg') 13 2, pointer;
+  --jimi-cursor-text: url('/cursors/bibata/classic/xterm.svg') 14 14, text;
+  --jimi-cursor-not-allowed: url('/cursors/bibata/classic/crossed_circle.svg') 14 14, not-allowed;
+  --jimi-cursor-col-resize: url('/cursors/bibata/classic/sb_h_double_arrow.svg') 14 14, col-resize;
+  --jimi-cursor-row-resize: url('/cursors/bibata/classic/sb_v_double_arrow.svg') 14 14, row-resize;
+  --jimi-cursor-grab: url('/cursors/bibata/classic/hand1.svg') 16 8, grab;
+  --jimi-cursor-grabbing: url('/cursors/bibata/classic/grabbing.svg') 14 7, grabbing;
+}
+
+html[data-theme='dark'],
+html[data-theme='black'] {
+  --bibata: /cursors/bibata/ice;
+  --jimi-cursor-default: url('/cursors/bibata/ice/left_ptr.svg') 6 2, auto;
+  --jimi-cursor-pointer: url('/cursors/bibata/ice/hand2.svg') 13 2, pointer;
+  --jimi-cursor-text: url('/cursors/bibata/ice/xterm.svg') 14 14, text;
+  --jimi-cursor-not-allowed: url('/cursors/bibata/ice/crossed_circle.svg') 14 14, not-allowed;
+  --jimi-cursor-col-resize: url('/cursors/bibata/ice/sb_h_double_arrow.svg') 14 14, col-resize;
+  --jimi-cursor-row-resize: url('/cursors/bibata/ice/sb_v_double_arrow.svg') 14 14, row-resize;
+  --jimi-cursor-grab: url('/cursors/bibata/ice/hand1.svg') 16 8, grab;
+  --jimi-cursor-grabbing: url('/cursors/bibata/ice/grabbing.svg') 14 7, grabbing;
+}
+
+*,
+*::before,
+*::after {
+  cursor: var(--jimi-cursor-default) !important;
+}
+
+a,
+button,
+[role='button'],
+label[for],
+summary,
+.cursor-pointer,
+.icon-button,
+.icon-mini,
+.btn,
+.toolbar-button,
+.clickable,
+.menu-item,
+.dock-item,
+.sidebar-item,
+.port,
+.node-floating-header,
+input[type='checkbox'],
+input[type='radio'],
+input[type='file'],
+input[type='button'],
+input[type='submit'],
+input[type='reset'],
+select {
+  cursor: var(--jimi-cursor-pointer) !important;
+}
+
+input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='button']):not([type='submit']):not([type='reset']),
+textarea,
+[contenteditable='true'] {
+  cursor: var(--jimi-cursor-text) !important;
+}
+
+:disabled,
+.disabled,
+[aria-disabled='true'],
+.cursor-not-allowed {
+  cursor: var(--jimi-cursor-not-allowed) !important;
+}
+
+.cursor-col-resize {
+  cursor: var(--jimi-cursor-col-resize) !important;
+}
+
+.cursor-row-resize {
+  cursor: var(--jimi-cursor-row-resize) !important;
+}
+
+.cursor-grab,
+.node.note {
+  cursor: var(--jimi-cursor-grab) !important;
+}
+
+.cursor-grabbing,
+.is-dragging,
+.is-dragging * {
+  cursor: var(--jimi-cursor-grabbing) !important;
+}
+
+.cursor-move,
+.cursor-crosshair {
+  cursor: revert !important;
+}
+
+.stage {
+  cursor: var(--jimi-cursor-default) !important;
+}
+
+.stage.is-panning,
+.stage.is-panning * {
+  cursor: var(--jimi-cursor-grabbing) !important;
+}
+
+.stage.is-marquee-selecting,
+.stage.is-marquee-selecting * {
+  cursor: crosshair !important;
+}
+
+.stage.is-resizing,
+.stage.is-resizing *,
+.resize-handle {
+  cursor: nwse-resize !important;
+}
+
+.stage.is-hydrating {
+  cursor: var(--jimi-cursor-default) !important;
+}
+
+.stage.is-file-drag-over {
+  cursor: copy !important;
+}

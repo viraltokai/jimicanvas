@@ -3,6 +3,7 @@ import {
   FileText,
   FileUp,
   Film,
+  FolderOpen,
   Headphones,
   Image as ImageIcon,
   Workflow,
@@ -15,6 +16,7 @@ export function FloatingDock({
   onExport,
   onOpenWorkflowTemplates,
   onUploadMedia,
+  onOpenMyAssets,
 }) {
   return (
     <aside className="floating-dock" onPointerDown={(event) => event.stopPropagation()}>
@@ -54,6 +56,15 @@ export function FloatingDock({
         </button>
         <span className="dock-tooltip">上传媒体生成节点</span>
       </div>
+
+      {onOpenMyAssets ? (
+        <div className="dock-item-wrapper">
+          <button className="dock-button" onClick={onOpenMyAssets} title="我的资产">
+            <FolderOpen size={18} />
+          </button>
+          <span className="dock-tooltip">我的资产</span>
+        </div>
+      ) : null}
 
       <div className="dock-divider" />
 

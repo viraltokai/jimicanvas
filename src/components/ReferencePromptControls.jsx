@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Type, X } from 'lucide-react';
 import {
   detectReferenceMention,
   filterReferenceMentionOptions,
@@ -11,6 +12,7 @@ import {
   restoreReferencePromptCursor,
   serializeReferencePromptEditor,
 } from '../lib/referencePromptEditor';
+import { getTextInputPreview } from '../lib/connections';
 
 export function ReferenceImageChip({
   image,
@@ -40,6 +42,145 @@ export function ReferenceImageChip({
       <button type="button" onClick={onRemove} title={removeTitle}>
         <X size={11} />
       </button>
+    </div>
+  );
+}
+
+/** 文本引用芯片：序号 + 默认图标，点击预览结果文本 */
+export function TextReferenceChip({
+  index,
+  textNode,
+  onRemove,
+  removeTitle = '移除文本引用并断开连线',
+}) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [popoverStyle, setPopoverStyle] = useState(null);
+  const triggerRef = useRef(null);
+  const popoverRef = useRef(null);
+  const previewText = getTextInputPreview(textNode);
+
+  const updatePopoverPosition = () => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const width = Math.min(320, window.innerWidth - 24);
+    const left = Math.min(Math.max(12, rect.left), window.innerWidth - width - 12);
+    const spaceAbove = rect.top;
+    const preferAbove = spaceAbove > 220;
+    setPopoverStyle({
+      position: 'fixed',
+      left: `${left}px`,
+      width: `${width}px`,
+      zIndex: 10050,
+      ...(preferAbove
+        ? { bottom: `${window.innerHeight - rect.top + 8}px`, top: 'auto' }
+        : { top: `${rect.bottom + 8}px`, bottom: 'auto' }),
+    });
+  };
+
+  useLayoutEffect(() => {
+    if (!previewOpen) {
+      setPopoverStyle(null);
+      return undefined;
+    }
+    updatePopoverPosition();
+    const onLayout = () => updatePopoverPosition();
+    window.addEventListener('resize', onLayout);
+    window.addEventListener('scroll', onLayout, true);
+    return () => {
+      window.removeEventListener('resize', onLayout);
+      window.removeEventListener('scroll', onLayout, true);
+    };
+  }, [previewOpen, previewText]);
+
+  useEffect(() => {
+    if (!previewOpen) return undefined;
+
+    const onPointerDown = (event) => {
+      const target = event.target;
+      if (triggerRef.current?.contains(target)) return;
+      if (popoverRef.current?.contains(target)) return;
+      setPreviewOpen(false);
+    };
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setPreviewOpen(false);
+    };
+
+    // 避免同一次点击立刻把刚打开的预览关掉
+    const timer = window.setTimeout(() => {
+      document.addEventListener('pointerdown', onPointerDown, true);
+    }, 0);
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [previewOpen]);
+
+  const popover =
+    previewOpen && popoverStyle
+      ? createPortal(
+          <div
+            ref={popoverRef}
+            className="text-reference-popover"
+            style={popoverStyle}
+            role="dialog"
+            aria-label="文本引用预览"
+          >
+            <div className="text-reference-popover-head">
+              <strong>文本引用 {index + 1}</strong>
+              <button
+                type="button"
+                className="text-reference-popover-close"
+                onClick={() => setPreviewOpen(false)}
+                title="关闭预览"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <pre className="text-reference-popover-body">{previewText || '（空文本）'}</pre>
+          </div>,
+          document.body
+        )
+      : null;
+
+  return (
+    <div className={`text-reference-chip is-icon${previewOpen ? ' is-preview-open' : ''}`}>
+      <span className="text-reference-index" aria-hidden="true">
+        {index + 1}
+      </span>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="text-reference-preview-trigger"
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setPreviewOpen((prev) => !prev);
+        }}
+        onPointerDown={(event) => event.stopPropagation()}
+        title={previewText || '预览文本'}
+        aria-label={`预览文本引用 ${index + 1}`}
+        aria-expanded={previewOpen}
+      >
+        <Type size={22} strokeWidth={2.25} aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        className="text-reference-remove"
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onRemove?.();
+        }}
+        onPointerDown={(event) => event.stopPropagation()}
+        title={removeTitle}
+      >
+        <X size={11} />
+      </button>
+      {popover}
     </div>
   );
 }

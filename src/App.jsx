@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Sparkles, Plus, Upload } from 'lucide-react';
 import { AssetPickerModal } from './components/AssetPickerModal';
 import { SeedanceAssetPickerModal } from './components/SeedanceAssetPickerModal';
+import { MediaUploadOverlay } from './components/MediaUploadOverlay';
 import { ImagePreviewModal } from './components/ImagePreviewModal';
 import { VideoPreviewModal } from './components/VideoPreviewModal';
 import { NodeTypePickerPopover } from './components/NodeTypePickerPopover';
@@ -34,6 +35,7 @@ import {
   CANVAS_SCALE_STEP,
   CANVAS_WHEEL_PAN_FACTOR,
   CLOUD_SYNC_DEBOUNCE_MS,
+  TOAST_AUTO_DISMISS_MS,
   MAX_CANVAS_SCALE,
   MIN_CANVAS_SCALE,
   normalizeImageModelSettings,
@@ -72,6 +74,7 @@ import {
   getImageInputLinks,
   getTextInputLinks,
   getVideoInputLinks,
+  getImageNodeReferenceUrl,
   isImageToPromptNode,
   isVideoToPromptNode,
   resolveNoteImageInputUrls,
@@ -97,10 +100,11 @@ import {
   saveCanvasDocuments,
 } from './lib/canvasApi';
 import { getOrRequestToken, getStoredChatToken, runChatCompletion } from './lib/chatApi';
+import { normalizeTextModel } from './lib/textModel';
 import { getInboxUnreadCount } from './lib/inboxApi';
 import { sseManager } from './lib/sseManager';
 import { isBackendInCooldown } from './lib/jimiaigoApi';
-import { fetchUserInfo, fetchPricingList, fetchPricingStatus } from './lib/userApi';
+import { clearAuthToken, fetchUserInfo, fetchPricingList, fetchPricingStatus } from './lib/userApi';
 import { updateModelActiveMap } from './lib/pricingStatus';
 import { calculateCost, calculateEstimatedCost } from './lib/pricing';
 import { fetchSiteConfig, getDefaultSiteSettings } from './lib/siteApi';
@@ -216,6 +220,35 @@ async function extractVideoFrame(videoUrl, position) {
   });
 }
 
+function canNativeScrollWheel(target, event, boundary) {
+  let element = target instanceof Element ? target : target?.parentElement;
+  while (element && element !== boundary) {
+    if (element instanceof HTMLElement) {
+      const style = window.getComputedStyle(element);
+      const overflowY = style.overflowY;
+      const overflowX = style.overflowX;
+      const canY = overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay';
+      const canX = overflowX === 'auto' || overflowX === 'scroll' || overflowX === 'overlay';
+      const deltaX = event.shiftKey && event.deltaX === 0 ? event.deltaY : event.deltaX;
+      const deltaY = event.shiftKey && event.deltaX === 0 ? 0 : event.deltaY;
+
+      if (canY && element.scrollHeight > element.clientHeight + 1) {
+        const atTop = element.scrollTop <= 0;
+        const atBottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
+        if ((deltaY < 0 && !atTop) || (deltaY > 0 && !atBottom)) return true;
+      }
+
+      if (canX && element.scrollWidth > element.clientWidth + 1) {
+        const atLeft = element.scrollLeft <= 0;
+        const atRight = element.scrollLeft + element.clientWidth >= element.scrollWidth - 1;
+        if ((deltaX < 0 && !atLeft) || (deltaX > 0 && !atRight)) return true;
+      }
+    }
+    element = element.parentElement;
+  }
+  return false;
+}
+
 function App() {
   const { theme, toggleTheme } = useTheme();
   const needsCloudHydrate = useMemo(() => Boolean(getStoredChatToken()), []);
@@ -241,7 +274,6 @@ function App() {
   const [linkFromNodeId, setLinkFromNodeId] = useState(null);
   const [linkNodePicker, setLinkNodePicker] = useState(null);
   const [doubleClickPicker, setDoubleClickPicker] = useState(null);
-  const [ripples, setRipples] = useState([]);
   const [inputHighlightNodeId, setInputHighlightNodeId] = useState(null);
   const [hoverLinkNodeId, setHoverLinkNodeId] = useState(null);
   const [pointerPos, setPointerPos] = useState({ x: 0, y: 0 });
@@ -256,6 +288,31 @@ function App() {
   const [runningNodeId, setRunningNodeId] = useState(null);
   const [translatingNodeId, setTranslatingNodeId] = useState(null);
   const [uploadingNodeId, setUploadingNodeId] = useState(null);
+  const [mediaUpload, setMediaUpload] = useState(null);
+
+  function beginMediaUpload({ label = '正在上传', total = 0, detail = '' } = {}) {
+    setMediaUpload({
+      label,
+      detail,
+      current: 0,
+      total: Math.max(0, Number(total) || 0),
+    });
+  }
+
+  function tickMediaUpload(current, detail) {
+    setMediaUpload((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        current: Math.max(0, Number(current) || 0),
+        detail: detail ? `正在上传：${detail}` : prev.detail,
+      };
+    });
+  }
+
+  function endMediaUpload() {
+    setMediaUpload(null);
+  }
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   const [showCustomerService, setShowCustomerService] = useState(false);
   const [showInbox, setShowInbox] = useState(false);
@@ -382,7 +439,7 @@ function App() {
         loading: false,
         remaining: info.remaining,
         percentage: info.percentage,
-        profile: info.profile || null,
+        profile: info,
       });
       try {
         const [pricing, status] = await Promise.all([
@@ -408,6 +465,18 @@ function App() {
   useEffect(() => {
     refreshUserQuota();
   }, []);
+
+  useEffect(() => {
+    if (!importError) return undefined;
+    const timer = window.setTimeout(() => setImportError(''), TOAST_AUTO_DISMISS_MS);
+    return () => window.clearTimeout(timer);
+  }, [importError]);
+
+  useEffect(() => {
+    if (!storageNotice) return undefined;
+    const timer = window.setTimeout(() => setStorageNotice(''), TOAST_AUTO_DISMISS_MS);
+    return () => window.clearTimeout(timer);
+  }, [storageNotice]);
 
   function openRechargeModal() {
     const token = getStoredChatToken();
@@ -863,7 +932,8 @@ function App() {
         return;
       }
 
-      if (isEditableTarget) return;
+      // 文本节点结果区等可滚动容器：优先让内容滚动，不抢去平移画布
+      if (isEditableTarget || canNativeScrollWheel(target, event, stage)) return;
 
       event.preventDefault();
 
@@ -1275,7 +1345,7 @@ function App() {
     const fileList = Array.from(files);
     if (fileList.length === 0) return;
 
-    showCopyNotice(`正在上传 ${fileList.length} 个文件...`);
+    beginMediaUpload({ label: '正在上传媒体', total: fileList.length });
 
     const rect = stageRef.current?.getBoundingClientRect();
     const centerX = dropPoint
@@ -1289,6 +1359,7 @@ function App() {
         ? (rect.height / 2 - viewportOffset.y) / canvasScale - DEFAULT_NODE_HEIGHT / 2
         : 160;
 
+    let completed = 0;
     const uploadPromises = fileList.map(async (file, index) => {
       const isImage = file.type.startsWith('image/');
       const isVideo = file.type.startsWith('video/');
@@ -1302,6 +1373,9 @@ function App() {
       if (!uploadedUrl) {
         throw new Error(`文件 ${file.name} 上传失败`);
       }
+
+      completed += 1;
+      tickMediaUpload(completed, file.name);
 
       const offset = index * 40;
       const node = createNode(type, centerX + offset + Math.random() * 20 - 10, centerY + offset + Math.random() * 20 - 10);
@@ -1328,6 +1402,8 @@ function App() {
     } catch (error) {
       console.error(error);
       showCopyNotice(error instanceof Error ? error.message : '部分或全部文件上传失败');
+    } finally {
+      endMediaUpload();
     }
   }
 
@@ -1759,7 +1835,7 @@ function App() {
     if (copyNoticeTimerRef.current) {
       clearTimeout(copyNoticeTimerRef.current);
     }
-    copyNoticeTimerRef.current = window.setTimeout(() => setCopyNotice(''), 2200);
+    copyNoticeTimerRef.current = window.setTimeout(() => setCopyNotice(''), TOAST_AUTO_DISMISS_MS);
   }
 
   function copyNode(nodeId) {
@@ -2240,6 +2316,7 @@ function App() {
       try {
         const translated = await runChatCompletion({
           token,
+          model: normalizeTextModel(node.textModel),
           content: buildStructuredTranslateInstruction(sourceContent),
         });
         const formatted = formatStructuredPromptResult(translated, ['prompt', 'shortPrompt']);
@@ -2382,7 +2459,11 @@ function App() {
     }
 
     try {
-      const generated = await runChatCompletion({ token, content: requestText });
+      const generated = await runChatCompletion({
+        token,
+        model: normalizeTextModel(node.textModel),
+        content: requestText,
+      });
 
       if (mode === 'translate-en') {
         updateNode(node.id, { prompt: generated, status: 'idle' });
@@ -3066,18 +3147,25 @@ function App() {
     const isAudioOutput = pickMode === 'audio-output';
 
     setUploadingNodeId(nodeId);
+    const uploadFiles = isAudioOutput ? filterAudioFiles(files) : files.slice(0, maxCount);
+    beginMediaUpload({
+      label: isVideoOutput ? '正在上传视频' : isAudioOutput ? '正在上传音频' : '正在上传参考图',
+      total: uploadFiles.length,
+    });
     try {
       const references = [];
-      const uploadFiles = isAudioOutput ? filterAudioFiles(files) : files.slice(0, maxCount);
       if (isAudioOutput && uploadFiles.length === 0) {
         throw new Error('请选择 MP3 音频文件');
       }
+      let completed = 0;
       for (const file of uploadFiles.slice(0, maxCount)) {
         if (isAudioOutput && !isAudioFile(file)) {
           continue;
         }
         const uploadedUrl = await uploadAsset({ token, file });
         references.push(buildUploadedAssetReference(file, pickMode, uploadedUrl));
+        completed += 1;
+        tickMediaUpload(completed, file.name);
       }
 
       updateActiveCanvas((doc) => ({
@@ -3101,6 +3189,7 @@ function App() {
       return false;
     } finally {
       setUploadingNodeId(null);
+      endMediaUpload();
     }
   }
 
@@ -3108,29 +3197,46 @@ function App() {
     const token = getOrRequestToken({ onSaved: refreshUserQuota });
     if (!token) return false;
 
-    const node = nodes.find((item) => item.id === nodeId);
-    const { maxCount } = getAssetPickerMeta(node, pickMode);
-    const isAudioOutput = pickMode === 'audio-output';
-    const uploadFiles = isAudioOutput ? filterAudioFiles(files) : files.slice(0, maxCount);
+    const isLibraryBrowse = isLibraryBrowseMode(pickMode);
+    const node = isLibraryBrowse ? null : nodes.find((item) => item.id === nodeId);
+    const maxCount = isLibraryBrowse
+      ? Math.max(1, Number(assetPicker.maxCount) || 8)
+      : getAssetPickerMeta(node, pickMode).maxCount;
+    const isAudioUpload = pickMode === 'audio-output' || pickMode === 'library-audio';
+    const uploadFiles = isAudioUpload ? filterAudioFiles(files) : files.slice(0, maxCount);
 
-    if (isAudioOutput && uploadFiles.length === 0) {
+    if (isAudioUpload && uploadFiles.length === 0) {
       return false;
     }
 
+    const queued = uploadFiles.slice(0, maxCount);
+    beginMediaUpload({
+      label: isAudioUpload ? '正在上传音频' : pickMode.includes('video') ? '正在上传视频' : '正在上传到资产库',
+      total: queued.length,
+    });
+
     try {
-      for (const file of uploadFiles.slice(0, maxCount)) {
-        if (isAudioOutput && !isAudioFile(file)) continue;
+      let completed = 0;
+      for (const file of queued) {
+        if (isAudioUpload && !isAudioFile(file)) continue;
         await uploadAsset({ token, file });
+        completed += 1;
+        tickMediaUpload(completed, file.name);
       }
-      return uploadFiles.length > 0;
+      return queued.length > 0;
     } catch (error) {
       console.error('Upload to asset library failed:', error);
       return false;
+    } finally {
+      endMediaUpload();
     }
   }
 
   async function uploadFromAssetPicker(nodeId, files, pickMode) {
-    const isReferenceLibraryUpload = pickMode === 'reference' || pickMode === 'veo-reference';
+    const isReferenceLibraryUpload =
+      pickMode === 'reference' ||
+      pickMode === 'veo-reference' ||
+      isLibraryBrowseMode(pickMode);
     const succeeded = isReferenceLibraryUpload
       ? await uploadAssetsToLibrary(nodeId, files, pickMode)
       : await uploadImageReferences(nodeId, files, pickMode);
@@ -3193,10 +3299,125 @@ function App() {
     });
   }
 
+  function isLibraryBrowseMode(pickMode = assetPicker.pickMode) {
+    return String(pickMode).startsWith('library-');
+  }
+
+  function getAssetPickerMediaType(pickMode = assetPicker.pickMode) {
+    if (
+      pickMode === 'video-output' ||
+      pickMode === 's25-ref-video' ||
+      pickMode === 'library-video' ||
+      pickMode === 'seedance-ref-video'
+    ) {
+      return 'video';
+    }
+    if (
+      pickMode === 'audio-output' ||
+      pickMode === 's25-ref-audio' ||
+      pickMode === 'library-audio' ||
+      pickMode === 'seedance-ref-audio'
+    ) {
+      return 'audio';
+    }
+    return 'image';
+  }
+
+  function openMyAssetsLibrary(mediaType = 'image') {
+    const resolved =
+      mediaType === 'video' ? 'video' : mediaType === 'audio' ? 'audio' : 'image';
+    const pickMode =
+      resolved === 'video'
+        ? 'library-video'
+        : resolved === 'audio'
+          ? 'library-audio'
+          : 'library-image';
+    setAssetPicker({
+      nodeId: 'library',
+      pickMode,
+      maxCount: 8,
+      title: '我的资产',
+      subtitle: '选择资产添加到画布',
+      source: 'local',
+      assets: [],
+      selectedAssets: [],
+      search: '',
+      loading: true,
+      seedanceStatus: 'Active',
+      seedanceAuditing: false,
+      seedanceNotice: '',
+    });
+  }
+
+  function changeLibraryMediaType(mediaType) {
+    const resolved =
+      mediaType === 'video' ? 'video' : mediaType === 'audio' ? 'audio' : 'image';
+    const pickMode =
+      resolved === 'video'
+        ? 'library-video'
+        : resolved === 'audio'
+          ? 'library-audio'
+          : 'library-image';
+    setAssetPicker((current) => ({
+      ...current,
+      pickMode,
+      selectedAssets: [],
+      assets: [],
+      loading: true,
+      source: 'local',
+    }));
+  }
+
   function getSeedancePickerMediaType(pickMode = assetPicker.pickMode) {
     if (pickMode === 'seedance-ref-video') return 'video';
     if (pickMode === 'seedance-ref-audio') return 'audio';
     return 'image';
+  }
+
+  function createNodesFromLibraryAssets(selectedAssets, pickMode) {
+    const mediaType = getAssetPickerMediaType(pickMode);
+    const rect = stageRef.current?.getBoundingClientRect();
+    const centerX = rect
+      ? (rect.width / 2 - viewportOffset.x) / canvasScale - DEFAULT_NODE_WIDTH / 2
+      : 220;
+    const centerY = rect
+      ? (rect.height / 2 - viewportOffset.y) / canvasScale - DEFAULT_NODE_HEIGHT / 2
+      : 160;
+
+    const nodesToCreate = selectedAssets
+      .map((asset, index) => {
+        const url = resolvePersistedAssetUrl(asset, mediaType);
+        if (!url) return null;
+        const offset = index * 40;
+        const node = createNode(
+          mediaType,
+          centerX + offset + Math.random() * 20 - 10,
+          centerY + offset + Math.random() * 20 - 10
+        );
+        node.title =
+          asset.name ||
+          (mediaType === 'video' ? '视频资产' : mediaType === 'audio' ? '音频资产' : '图片资产');
+        node.content = url;
+        if (mediaType === 'image') {
+          node.images = [url];
+        } else if (mediaType === 'video') {
+          node.videos = [url];
+        } else if (mediaType === 'audio') {
+          node.audioUrl = url;
+        }
+        return node;
+      })
+      .filter(Boolean);
+
+    if (nodesToCreate.length === 0) return;
+
+    updateActiveCanvas((doc) => ({
+      ...doc,
+      nodes: [...doc.nodes, ...nodesToCreate],
+    }));
+    setSelectedNodeIds(nodesToCreate.map((node) => node.id));
+    setSelectedConnectionId(null);
+    showCopyNotice(`已添加 ${nodesToCreate.length} 个资产到画布`);
   }
 
   async function loadSeedanceAssetPickerAssets(status = 'Active') {
@@ -3237,14 +3458,21 @@ function App() {
     }
 
     const mediaType = getSeedancePickerMediaType();
+    const fileList = Array.from(files || []);
     setAssetPicker((current) => ({
       ...current,
       seedanceAuditing: true,
       seedanceNotice: '',
     }));
+    beginMediaUpload({
+      label: '正在上传并审核',
+      total: fileList.length,
+      detail: '上传后将自动提交审核',
+    });
 
     try {
-      const result = await uploadAndAuditSeedanceAssets({ token, mediaType, files });
+      const result = await uploadAndAuditSeedanceAssets({ token, mediaType, files: fileList });
+      tickMediaUpload(fileList.length);
       if (result.passed) {
         setAssetPicker((current) => ({
           ...current,
@@ -3268,6 +3496,7 @@ function App() {
       }));
     } finally {
       setAssetPicker((current) => ({ ...current, seedanceAuditing: false }));
+      endMediaUpload();
     }
   }
 
@@ -3279,12 +3508,11 @@ function App() {
     }
 
     const isSeedanceLibrary = String(pickMode).startsWith('seedance-');
-    const mediaType = pickMode === 'video-output' || pickMode === 'seedance-ref-video' || pickMode === 's25-ref-video'
-      ? 'video'
-      : pickMode === 'seedance-ref-audio' || pickMode === 'audio-output' || pickMode === 's25-ref-audio'
-        ? 'audio'
-        : 'image';
-    const assetSource = pickMode === 'video-output' || pickMode === 'audio-output' ? 'local' : source;
+    const mediaType = getAssetPickerMediaType(pickMode);
+    const assetSource =
+      pickMode === 'video-output' || pickMode === 'audio-output' || isLibraryBrowseMode(pickMode)
+        ? 'local'
+        : source;
 
     setAssetPicker((current) => ({ ...current, loading: true, assets: [] }));
     try {
@@ -3301,7 +3529,8 @@ function App() {
             source: assetSource,
             page: 1,
             pageSize: 1000,
-            mediaType: mediaType === 'audio' ? 'image' : mediaType,
+            mediaType:
+              mediaType === 'audio' && !isLibraryBrowseMode(pickMode) ? 'image' : mediaType,
           });
       setAssetPicker((current) => ({
         ...current,
@@ -3318,7 +3547,10 @@ function App() {
       if (String(current.pickMode).startsWith('seedance-') && asset.status !== 'Active') {
         return current;
       }
-      if (current.pickMode === 'audio-output' && !isAudioAssetRecord(asset)) {
+      if (
+        (current.pickMode === 'audio-output' || current.pickMode === 'library-audio') &&
+        !isAudioAssetRecord(asset)
+      ) {
         return current;
       }
       const exists = current.selectedAssets.some((item) => isSamePickerAsset(item, asset));
@@ -3344,6 +3576,12 @@ function App() {
   function confirmAssetSelection() {
     const { nodeId, selectedAssets, pickMode, source } = assetPicker;
     if (!nodeId || selectedAssets.length === 0) return;
+
+    if (isLibraryBrowseMode(pickMode) || nodeId === 'library') {
+      createNodesFromLibraryAssets(selectedAssets, pickMode);
+      setAssetPicker((current) => ({ ...current, nodeId: null, selectedAssets: [] }));
+      return;
+    }
 
     updateActiveCanvas((doc) => ({
       ...doc,
@@ -3451,18 +3689,44 @@ function App() {
   }
 
   function updateVideoGenerationType(nodeId, value) {
-    updateNode(nodeId, {
+    const node = nodes.find((item) => item.id === nodeId);
+    const family = inferVideoFamily(node);
+    const patch = {
       videoGenerationType: value,
       status: 'idle',
-      ...(value === 'frame'
-        ? { referenceImages: [] }
-        : { videoFirstFrame: null, videoLastFrame: null }),
-    });
+    };
+
+    if (value === 'frame') {
+      patch.referenceImages = [];
+      if (family === 'seedance') {
+        patch.videoReferenceVideos = [];
+        patch.videoReferenceAudios = [];
+      }
+    } else if (value === 'reference') {
+      patch.videoFirstFrame = null;
+      patch.videoLastFrame = null;
+    } else {
+      // t2v / other
+      patch.referenceImages = [];
+      patch.videoFirstFrame = null;
+      patch.videoLastFrame = null;
+      if (family === 'seedance') {
+        patch.videoReferenceVideos = [];
+        patch.videoReferenceAudios = [];
+      }
+    }
+
+    updateNode(nodeId, patch);
 
     if (value === 'frame') {
       const removed = trimVideoImageConnections(nodeId, VIDEO_FRAME_IMAGE_CONNECTION_MAX);
       if (removed > 0) {
         showCopyNotice(`首尾帧模式最多连接 ${VIDEO_FRAME_IMAGE_CONNECTION_MAX} 张图片，已保留前 ${VIDEO_FRAME_IMAGE_CONNECTION_MAX} 张`);
+      }
+    } else if (value === 't2v') {
+      const removed = trimVideoImageConnections(nodeId, 0);
+      if (removed > 0) {
+        showCopyNotice('文生视频模式不使用图片连接，已断开相关连线');
       }
     }
   }
@@ -3480,6 +3744,14 @@ function App() {
         showCopyNotice(validationError);
         return;
       }
+    }
+
+    if (
+      fromNode?.type === 'image' &&
+      (toNode?.type === 'image' || toNode?.type === 'video' || toNode?.type === 'note') &&
+      !getImageNodeReferenceUrl(fromNode)
+    ) {
+      showCopyNotice('示例图不能作为图片引用，请先上传或生成真实图片');
     }
 
     updateActiveCanvas((doc) => {
@@ -3822,17 +4094,6 @@ function App() {
   }
 
   function handleStagePointerDown(event) {
-    const rect = stageRef.current?.getBoundingClientRect();
-    if (rect) {
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      const id = `${Date.now()}-${Math.random()}`;
-      setRipples((prev) => [...prev, { id, x, y }]);
-      setTimeout(() => {
-        setRipples((prev) => prev.filter((r) => r.id !== id));
-      }, 700);
-    }
-
     if (!isStageBackgroundTarget(event)) return;
 
     setSelectedConnectionId(null);
@@ -4026,10 +4287,18 @@ function App() {
         onExport={exportJson}
         onOpenWorkflowTemplates={() => setWorkflowTemplateOpen(true)}
         onUploadMedia={() => directUploadInputRef.current?.click()}
+        onOpenMyAssets={() => openMyAssetsLibrary('image')}
       />
 
       {importError ? <div className="toast-error">{importError}</div> : null}
       {copyNotice ? <div className="toast-info toast-copy">{copyNotice}</div> : null}
+      <MediaUploadOverlay
+        active={Boolean(mediaUpload)}
+        current={mediaUpload?.current || 0}
+        total={mediaUpload?.total || 0}
+        label={mediaUpload?.label || '正在上传'}
+        detail={mediaUpload?.detail || ''}
+      />
       {storageNotice ? (
         <div className="toast-info">
           <span>{storageNotice}</span>
@@ -4221,22 +4490,22 @@ function App() {
           <AssetPickerModal
             assets={assetPicker.assets}
             loading={assetPicker.loading}
+            uploading={Boolean(mediaUpload)}
             source={assetPicker.source}
             search={assetPicker.search}
             selectedAssets={assetPicker.selectedAssets}
             maxCount={assetPicker.maxCount}
             title={assetPicker.title}
             subtitle={assetPicker.subtitle}
-            mediaType={
-              assetPicker.pickMode === 'video-output' || assetPicker.pickMode === 's25-ref-video'
-                ? 'video'
-                : assetPicker.pickMode === 'audio-output' || assetPicker.pickMode === 's25-ref-audio'
-                  ? 'audio'
-                  : 'image'
+            mediaType={getAssetPickerMediaType(assetPicker.pickMode)}
+            showMediaTabs={isLibraryBrowseMode(assetPicker.pickMode)}
+            confirmLabel={
+              isLibraryBrowseMode(assetPicker.pickMode) ? '添加到画布' : '确认选择'
             }
             onSourceChange={(source) =>
               setAssetPicker((current) => ({ ...current, source, selectedAssets: [] }))
             }
+            onMediaTypeChange={changeLibraryMediaType}
             onSearchChange={(search) => setAssetPicker((current) => ({ ...current, search }))}
             onToggleAsset={toggleAssetSelection}
             onUploadImages={(files) =>
@@ -4274,6 +4543,21 @@ function App() {
           onRecharge={openRechargeModal}
           inboxUnread={inboxUnread}
           onOpenInbox={() => setShowInbox(true)}
+          userProfile={
+            getStoredChatToken()
+              ? userQuota.profile || {
+                  nickname: '加载中',
+                  remaining: userQuota.remaining ?? 0,
+                  avatarUrl: '',
+                  isVip: false,
+                }
+              : null
+          }
+          onLogout={() => {
+            clearAuthToken();
+            setUserQuota({ loading: false, remaining: null, percentage: null, profile: null });
+            navigateToCanvasHome();
+          }}
         />
 
         <section
@@ -4439,14 +4723,6 @@ function App() {
             onViewportChange={setViewportOffset}
             disabled={!canvasReady}
           />
-
-          {ripples.map((ripple) => (
-            <span
-              key={ripple.id}
-              className="click-ripple"
-              style={{ left: ripple.x, top: ripple.y }}
-            />
-          ))}
         </section>
       </main>
 

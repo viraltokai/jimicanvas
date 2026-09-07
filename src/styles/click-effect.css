@@ -1,0 +1,108 @@
+/* Click effect — aligned with jimiadmin */
+#jimi-click-effects {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 99999;
+  overflow: hidden;
+}
+
+.jimi-click-flash,
+.jimi-click-ripple,
+.jimi-click-particle {
+  position: fixed;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  will-change: transform, opacity;
+}
+
+.jimi-click-flash {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--click-flash-bg);
+  box-shadow: var(--click-flash-shadow);
+  animation: jimi-click-flash 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.jimi-click-ripple {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--click-ring-color);
+  background: var(--click-ring-bg);
+  box-shadow: var(--click-ring-shadow);
+  animation: jimi-click-ripple 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.jimi-click-ripple-outer {
+  border-color: var(--click-ring-outer-color);
+  animation-delay: 0.1s;
+  animation-duration: 1.1s;
+}
+
+.jimi-click-particle {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--click-particle-bg);
+  box-shadow: var(--click-particle-shadow);
+  animation: jimi-click-particle 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+:root,
+html[data-theme='light'] {
+  --click-flash-bg: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0%, color-mix(in srgb, var(--accent) 55%, transparent) 100%);
+  --click-flash-shadow: 0 0 10px color-mix(in srgb, var(--accent) 25%, transparent);
+  --click-ring-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  --click-ring-bg: radial-gradient(circle, color-mix(in srgb, var(--accent) 8%, transparent) 0%, transparent 70%);
+  --click-ring-shadow: 0 0 8px color-mix(in srgb, var(--accent) 15%, transparent);
+  --click-ring-outer-color: color-mix(in srgb, var(--accent) 25%, transparent);
+  --click-particle-bg: var(--accent);
+  --click-particle-shadow: 0 0 4px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+html[data-theme='dark'],
+html[data-theme='black'] {
+  --click-flash-bg: radial-gradient(circle, rgba(255, 255, 255, 0.9) 0%, color-mix(in srgb, var(--accent) 35%, transparent) 100%);
+  --click-flash-shadow: 0 0 12px color-mix(in srgb, var(--accent) 35%, transparent);
+  --click-ring-color: color-mix(in srgb, var(--accent) 75%, transparent);
+  --click-ring-bg: radial-gradient(circle, color-mix(in srgb, var(--accent) 15%, transparent) 0%, transparent 70%);
+  --click-ring-shadow: 0 0 10px color-mix(in srgb, var(--accent) 25%, transparent);
+  --click-ring-outer-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  --click-particle-bg: var(--accent);
+  --click-particle-shadow: 0 0 5px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+@keyframes jimi-click-flash {
+  0% {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.6);
+    opacity: 0;
+  }
+}
+
+@keyframes jimi-click-ripple {
+  0% {
+    transform: translate(-50%, -50%) scale(0.3);
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(5.5);
+    opacity: 0;
+  }
+}
+
+@keyframes jimi-click-particle {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--jimi-particle-x)), calc(-50% + var(--jimi-particle-y))) scale(0.1);
+    opacity: 0;
+  }
+}

@@ -2,6 +2,8 @@ import { filterActiveResolutions, isPricedModelActive, isProductPricingActive, i
 
 /** 画布有改动后，延迟多久再上传到云端（防抖，减少频繁保存） */
 export const CLOUD_SYNC_DEBOUNCE_MS = 3000;
+/** Toast 自动关闭时长 */
+export const TOAST_AUTO_DISMISS_MS = 5000;
 export const STORAGE_KEY = 'jimicanvas.documents.v1';
 export const ACTIVE_CANVAS_ID_KEY = 'jimicanvas.active_canvas_id';
 export const JIMIAIGO_TOKEN_STORAGE_KEY = 'jimicanvas.jimiaigo.token';
@@ -17,7 +19,18 @@ export const DEFAULT_SITE_TITLE = 'JimiCanvas';
 export const DEFAULT_SITE_SLOGAN = '轻量画布工作台';
 export const DEFAULT_KEFU_QR_URL = '/wechat-qrcode.png';
 export const CANVAS_TUTORIAL_URL = 'https://www.bilibili.com/video/BV1GWEw6gEJ9/';
-export const DEFAULT_TEXT_MODEL = 'gpt-5.4-mini';
+/** 与小咪助手（GlobalChatWidget）同源：gpt-5.6-sol / claude-sonnet-5 */
+export const TEXT_MODEL_OPTIONS = [
+  { value: 'gpt-5.6-sol', label: 'GPT-5.6 Sol' },
+  { value: 'claude-sonnet-5', label: 'Claude Sonnet 5' },
+];
+export const DEFAULT_TEXT_MODEL = TEXT_MODEL_OPTIONS[0].value;
+/** 文本节点来源：自定义手写 / AI 生成 */
+export const TEXT_MODE_OPTIONS = [
+  { value: 'custom', label: '自定义文本' },
+  { value: 'ai', label: 'AI生成' },
+];
+export const DEFAULT_TEXT_MODE = 'custom';
 export const DEFAULT_IMAGE_MODEL = 'gpt-image-2';
 export const DEFAULT_IMAGE_RESOLUTION = '1k';
 export const DEFAULT_IMAGE_RATIO = '1:1';
@@ -34,14 +47,14 @@ export const MAX_CANVAS_SCALE = 1.4;
 export const CANVAS_SCALE_STEP = 0.1;
 export const CANVAS_WHEEL_PAN_FACTOR = 1;
 export const CANVAS_GRID_CELL_SIZE = 28;
-export const DEFAULT_CANVAS_BACKGROUND = 'grid';
+export const DEFAULT_CANVAS_BACKGROUND = 'dots';
 export const CANVAS_BACKGROUND_OPTIONS = [
-  { value: 'grid', label: '网格', hint: '网状参考线' },
   { value: 'dots', label: '点状', hint: '圆点参考' },
+  { value: 'grid', label: '网格', hint: '网状参考线' },
   { value: 'line', label: '横线', hint: '水平参考线' },
   { value: 'none', label: '纯色', hint: '无背景纹理' },
 ];
-export const DEFAULT_VIDEO_URL = '/demo/default-tiktok-ecommerce-9x16.mp4';
+export const DEFAULT_VIDEO_URL = 'https://cdn.viralwave.ai/landing/cgt-20260902213126-hpw4m.mp4';
 export const DEFAULT_IMAGE_URL = '/demo/default-handsome-american-man.jpg';
 export const DEFAULT_DEMO_IMAGE_RATIO = '3:2';
 export const DEFAULT_VIDEO_FAMILY = 'seedance';
@@ -49,9 +62,9 @@ export const DEFAULT_VIDEO_MODEL = 'seedance-2.0-manxue';
 export const DEFAULT_VIDEO_ROUTE = 'route3';
 export const DEFAULT_VIDEO_DURATION = '5';
 export const DEFAULT_SORA_VIDEO_DURATION = '12';
-export const DEFAULT_VIDEO_ORIENTATION = 'portrait';
-export const DEFAULT_VIDEO_RATIO = '9:16';
-export const DEFAULT_VIDEO_SIZE = '720x1280';
+export const DEFAULT_VIDEO_ORIENTATION = 'landscape';
+export const DEFAULT_VIDEO_RATIO = '16:9';
+export const DEFAULT_VIDEO_SIZE = '1280x720';
 export const DEFAULT_VIDEO_RESOLUTION = '720p';
 export const DEFAULT_VIDEO_QUALITY = '720p';
 export const DEFAULT_VIDEO_COUNT = 1;
@@ -132,6 +145,26 @@ export const VEO_GENERATION_TYPE_OPTIONS = [
   { value: 'reference', label: '参考图' },
 ];
 
+/** Seedance 输入模式：参考图 / 文生 / 首尾帧互斥 */
+export const SEEDANCE_INPUT_MODE_OPTIONS = [
+  { value: 'reference', label: '全能参考' },
+  { value: 't2v', label: '文生视频' },
+  { value: 'frame', label: '首尾帧' },
+];
+
+export const DEFAULT_SEEDANCE_INPUT_MODE = 'frame';
+
+export function normalizeSeedanceInputMode(value, node) {
+  if (SEEDANCE_INPUT_MODE_OPTIONS.some((option) => option.value === value)) {
+    return value;
+  }
+  // 兼容旧数据：有参考图则视为全能参考，有首尾帧则视为首尾帧
+  const refs = Array.isArray(node?.referenceImages) ? node.referenceImages : [];
+  if (refs.length > 0) return 'reference';
+  if (node?.videoFirstFrame || node?.videoLastFrame) return 'frame';
+  return DEFAULT_SEEDANCE_INPUT_MODE;
+}
+
 /** 可选视频家族（Sora 已下线，见 SORA_FAMILY_ENABLED） */
 export const VIDEO_FAMILY_OPTIONS = [
   { value: 'sora', label: 'Sora' },
@@ -152,6 +185,7 @@ export const VIDEO_FAMILY_GROUPS = [
   {
     id: 'seedance',
     label: 'Seedance',
+    icon: 'doubao',
     families: ['seedance', 'seedance25', 'seedance25gz', 'seedance25ar'],
     shortLabels: {
       seedance: '2.0',
@@ -163,16 +197,25 @@ export const VIDEO_FAMILY_GROUPS = [
   {
     id: 'google',
     label: 'Google',
+    icon: 'gemini',
     families: ['veo', 'omni'],
   },
   {
     id: 'more',
     label: '其他',
+    icon: 'doubao',
     families: ['flux3', 'grok', 'minimax', 'wan30'],
+    familyIcons: {
+      flux3: 'blackforestlabs',
+      grok: 'grok',
+      minimax: 'minimax',
+      wan30: 'qwen',
+    },
   },
   {
     id: 'sora',
     label: 'Sora',
+    icon: 'sora',
     families: ['sora'],
   },
 ];
@@ -188,7 +231,7 @@ export const VIDEO_FAMILY_CONFIG = {
     provider: 'sora',
     route: 'route3',
     defaultDuration: '12',
-    defaultOrientation: 'portrait',
+    defaultOrientation: 'landscape',
     models: [
       { value: 'sora2-gz-sp', label: 'Sora2 特价版' },
       { value: 'sora2-gz-stable', label: 'Sora2 稳定版' },
@@ -304,6 +347,7 @@ export const VIDEO_FAMILY_CONFIG = {
       { value: '10', label: '10 秒' },
       { value: '15', label: '15 秒' },
     ],
+    defaultOrientation: 'landscape',
     maxCount: 3,
     resolutionKey: 'resolution',
     ratioKey: 'ratio',
@@ -325,7 +369,7 @@ export const VIDEO_FAMILY_CONFIG = {
       return { value, label: `${value} 秒` };
     }),
     defaultDuration: '4',
-    defaultOrientation: 'portrait',
+    defaultOrientation: 'landscape',
     maxCount: 1,
     resolutionKey: 'resolution',
     ratioKey: 'ratio',
@@ -351,7 +395,7 @@ export const VIDEO_FAMILY_CONFIG = {
       return { value, label: `${value} 秒` };
     }),
     defaultDuration: '5',
-    defaultOrientation: 'portrait',
+    defaultOrientation: 'landscape',
     maxCount: 1,
     resolutionKey: 'resolution',
     ratioKey: 'ratio',
@@ -371,7 +415,7 @@ export const VIDEO_FAMILY_CONFIG = {
       { value: '30', label: '30 秒' },
     ],
     defaultDuration: '15',
-    defaultOrientation: 'portrait',
+    defaultOrientation: 'landscape',
     maxCount: 1,
     resolutionKey: 'ratio',
     ratioKey: 'ratio',
@@ -773,13 +817,17 @@ export function getGroupedVideoFamilyOptions(soraVisibility) {
         const option = byValue.get(familyId);
         if (!option) return null;
         const shortLabel = group.shortLabels?.[familyId];
-        return shortLabel ? { ...option, label: shortLabel, fullLabel: option.label } : option;
+        const icon = group.familyIcons?.[familyId] || group.icon;
+        return shortLabel
+          ? { ...option, label: shortLabel, fullLabel: option.label, icon }
+          : { ...option, icon };
       })
       .filter(Boolean);
 
     return {
       id: group.id,
       label: group.label,
+      icon: group.icon,
       options,
     };
   }).filter((group) => group.options.length > 0);
@@ -911,7 +959,12 @@ export function normalizeVideoModelSettings({
 } = {}) {
   const config = getVideoFamilyConfig(family);
   const effectiveDuration = duration ?? getDefaultVideoDuration(family);
-  const normalizedGenerationType = family === 'veo' ? normalizeVeoGenerationType(generationType) : undefined;
+  const normalizedGenerationType =
+    family === 'veo'
+      ? normalizeVeoGenerationType(generationType)
+      : family === 'seedance'
+        ? normalizeSeedanceInputMode(generationType)
+        : undefined;
   const effectiveOrientation = orientation ?? getDefaultVideoOrientation(family);
   const modelOptions = config.models || [];
   const ratioOptions =
@@ -1017,11 +1070,41 @@ export function normalizeVideoModelSettings({
 }
 
 export const IMAGE_MODEL_OPTIONS = [
-  { value: 'gpt-image-2', label: 'gpt image2' },
-  { value: 'gpt-image-1.5', label: 'gpt image 1.5' },
-  { value: 'grok-imagine-image-2', label: 'grok image 2' },
-  { value: 'nanobanana2', label: 'nano banana2' },
-  { value: 'nanobananapro', label: 'nano banana pro' },
+  { value: 'nanobanana2', label: 'Nano Banana 2', icon: 'nanobanana' },
+  { value: 'nanobananapro', label: 'Nano Banana Pro', icon: 'nanobanana' },
+  { value: 'gpt-image-2', label: 'GPT Image 2', icon: 'openai' },
+  { value: 'gpt-image-1.5', label: 'GPT Image 1.5', icon: 'openai' },
+  { value: 'grok-imagine-image-2', label: 'Grok Image 2', icon: 'grok' },
+];
+
+/** 图片模型分组：Nano / GPT 保留二级，其余左侧平铺 */
+export const IMAGE_MODEL_GROUPS = [
+  {
+    id: 'nano',
+    label: 'Nano Banana',
+    icon: 'nanobanana',
+    models: ['nanobanana2', 'nanobananapro'],
+    shortLabels: {
+      nanobanana2: '2',
+      nanobananapro: 'Pro',
+    },
+  },
+  {
+    id: 'gpt',
+    label: 'GPT Image',
+    icon: 'openai',
+    models: ['gpt-image-2', 'gpt-image-1.5'],
+    shortLabels: {
+      'gpt-image-2': '2',
+      'gpt-image-1.5': '1.5',
+    },
+  },
+  {
+    id: 'grok-imagine-image-2',
+    label: 'Grok Image 2',
+    icon: 'grok',
+    models: ['grok-imagine-image-2'],
+  },
 ];
 
 export const GROK_IMAGINE_IMAGE_2_RATIO_OPTIONS = [
@@ -1147,6 +1230,31 @@ export function getVisibleImageModelOptions(currentModel = '') {
     if (selected) return [selected, ...visible];
   }
   return visible.length ? visible : IMAGE_MODEL_OPTIONS;
+}
+
+export function getGroupedImageModelOptions(currentModel = '') {
+  const visibleOptions = getVisibleImageModelOptions(currentModel);
+  const byValue = new Map(visibleOptions.map((option) => [option.value, option]));
+
+  return IMAGE_MODEL_GROUPS.map((group) => {
+    const options = group.models
+      .map((modelId) => {
+        const option = byValue.get(modelId);
+        if (!option) return null;
+        const shortLabel = group.shortLabels?.[modelId];
+        return shortLabel
+          ? { ...option, label: shortLabel, fullLabel: option.label, icon: group.icon || option.icon }
+          : { ...option, icon: group.icon || option.icon };
+      })
+      .filter(Boolean);
+
+    return {
+      id: group.id,
+      label: group.label,
+      icon: group.icon,
+      options,
+    };
+  }).filter((group) => group.options.length > 0);
 }
 
 export function getImageRatioOptions(model) {
