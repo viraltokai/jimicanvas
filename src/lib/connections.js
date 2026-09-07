@@ -229,13 +229,13 @@ export function resolveVideoPrompt(node, nodes = [], connections = []) {
 
 export function isVideoFrameImageMode(node) {
   const family = inferVideoFamily(node);
-  if (family === 'veo') {
+  if (family === 'veo' || family === 'minimax') {
     return (node?.videoGenerationType || 'frame') === 'frame';
   }
   if (family === 'flux3') {
     return String(node?.videoFlux3Mode || 't2v') === 'flf';
   }
-  if (family === 'seedance') {
+  if (family === 'seedance' || family === 'seedance25gz') {
     return normalizeSeedanceInputMode(node?.videoGenerationType, node) === 'frame';
   }
   return false;
@@ -243,25 +243,32 @@ export function isVideoFrameImageMode(node) {
 
 export function isVideoReferenceImageMode(node) {
   const family = inferVideoFamily(node);
-  if (family === 'veo') {
+  if (family === 'veo' || family === 'minimax') {
     return (node?.videoGenerationType || 'frame') === 'reference';
   }
   if (family === 'flux3') {
     const mode = String(node?.videoFlux3Mode || 't2v');
     return mode === 'i2v' || mode === 'keyframes';
   }
-  if (family === 'seedance') {
+  if (family === 'seedance' || family === 'seedance25gz') {
     return normalizeSeedanceInputMode(node?.videoGenerationType, node) === 'reference';
   }
-  return !isVideoFrameImageMode(node);
+  // 其他模型仅支持参考图，不支持首尾帧
+  return true;
 }
 
 export function getVideoImageConnectionMax(node) {
   const family = inferVideoFamily(node);
-  if (family === 'seedance') {
+  if (family === 'seedance' || family === 'seedance25gz') {
     const mode = normalizeSeedanceInputMode(node?.videoGenerationType, node);
     if (mode === 't2v') return 0;
     if (mode === 'frame') return VIDEO_FRAME_IMAGE_CONNECTION_MAX;
+    return getVideoReferenceImageMax(node);
+  }
+  if (family === 'veo' || family === 'minimax') {
+    if ((node?.videoGenerationType || 'frame') === 'frame') {
+      return VIDEO_FRAME_IMAGE_CONNECTION_MAX;
+    }
     return getVideoReferenceImageMax(node);
   }
   if (isVideoFrameImageMode(node)) {
@@ -271,19 +278,47 @@ export function getVideoImageConnectionMax(node) {
 }
 
 export function buildVideoConnectedImageAsset(linkItem) {
+  if (!linkItem?.linkId || !linkItem?.node) return null;
   const url = getImageNodeReferenceUrl(linkItem.node);
-  if (!url) return null;
   return {
     id: `conn-${linkItem.linkId}`,
     linkId: linkItem.linkId,
-    url,
+    url: url || '',
     name: formatImageInputLabel(linkItem.node),
     source: 'connection',
+    pending: !url,
   };
 }
 
 export function resolveVideoConnectedImageAssets(imageInputLinks = []) {
   return (imageInputLinks || []).map(buildVideoConnectedImageAsset).filter(Boolean);
+}
+
+export function buildVideoConnectedVideoAsset(linkItem) {
+  if (!linkItem?.linkId || !linkItem?.node) return null;
+  const url = getVideoNodeReferenceUrl(linkItem.node);
+  return {
+    id: `conn-${linkItem.linkId}`,
+    linkId: linkItem.linkId,
+    url: url || '',
+    name: formatVideoInputLabel(linkItem.node),
+    source: 'connection',
+    pending: !url,
+  };
+}
+
+export function resolveVideoConnectedVideoAssets(videoInputLinks = []) {
+  return (videoInputLinks || []).map(buildVideoConnectedVideoAsset).filter(Boolean);
+}
+
+function dedupeReferenceMedia(items = []) {
+  const seen = new Set();
+  return items.filter((item) => {
+    const key = item.linkId || item.id || item.url;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export function resolveVideoToolbarReferences(node, imageInputLinks = []) {
@@ -296,6 +331,14 @@ export function resolveVideoToolbarReferences(node, imageInputLinks = []) {
   const max = getVideoReferenceImageMax(node);
 
   return dedupeReferenceImages([...connected, ...assetRefs]).slice(0, max);
+}
+
+export function resolveVideoToolbarReferenceVideos(node, videoInputLinks = [], maxAssetCount = Infinity) {
+  const assetRefs = Array.isArray(node?.videoReferenceVideos) ? [...node.videoReferenceVideos] : [];
+  const connected = resolveVideoConnectedVideoAssets(videoInputLinks);
+  const limitedAssets =
+    Number.isFinite(maxAssetCount) && maxAssetCount >= 0 ? assetRefs.slice(0, maxAssetCount) : assetRefs;
+  return dedupeReferenceMedia([...connected, ...limitedAssets]);
 }
 
 export function resolveVideoToolbarFrames(node, imageInputLinks = []) {
@@ -331,7 +374,10 @@ export function resolveVideoGenerationFrames(node, nodes = [], connections = [])
   }
   const imageInputLinks = getImageInputLinks(node.id, nodes, connections);
   const { firstFrame, lastFrame } = resolveVideoToolbarFrames(node, imageInputLinks);
-  return { firstFrame, lastFrame };
+  return {
+    firstFrame: firstFrame?.url ? firstFrame : null,
+    lastFrame: lastFrame?.url ? lastFrame : null,
+  };
 }
 
 export function validateVideoImageConnection(videoNode, imageInputLinks = []) {
@@ -356,13 +402,20 @@ export function resolveVideoReferenceImages(node, nodes = [], connections = []) 
     return [];
   }
   const imageInputLinks = getImageInputLinks(node.id, nodes, connections);
-  return resolveVideoToolbarReferences(node, imageInputLinks).map((item) => ({
-    id: item.id,
-    linkId: item.linkId,
-    url: item.url,
-    name: item.name,
-    source: item.source,
-  }));
+  return resolveVideoToolbarReferences(node, imageInputLinks)
+    .filter((item) => item.url)
+    .map((item) => ({
+      id: item.id,
+      linkId: item.linkId,
+      url: item.url,
+      name: item.name,
+      source: item.source,
+    }));
+}
+
+export function resolveVideoReferenceVideos(node, nodes = [], connections = [], maxAssetCount = Infinity) {
+  const videoInputLinks = getVideoInputLinks(node.id, nodes, connections);
+  return resolveVideoToolbarReferenceVideos(node, videoInputLinks, maxAssetCount).filter((item) => item.url);
 }
 
 export function hasVideoPromptSource(node, nodes = [], connections = []) {

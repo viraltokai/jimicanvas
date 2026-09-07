@@ -12,14 +12,14 @@ import {
   MessageCircle,
   Moon,
   Sun,
-  Wallet,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { getNextThemeLabel } from '../lib/theme';
-import { formatBalanceAmount } from '../lib/userApi';
 import { BrandProjectMenu } from './BrandProjectMenu';
+import { AnimatedJimicoinBalance } from './AnimatedJimicoinBalance';
 import { UserAvatarMenu } from './UserAvatarMenu';
-
+import JimicoinIcon from './JimicoinIcon';
+import { formatJimicoinNumber } from '../lib/userApi';
 const CLOUD_SYNC_META = {
   offline: {
     label: '云端未登录',
@@ -170,24 +170,19 @@ export function Topbar({
               onClick={onRecharge}
               title={
                 quotaLoading
-                  ? '正在加载个人额度'
-                  : `剩余 ${formatBalanceAmount(quotaRemaining ?? 0)}${
-                      quotaPercentage != null ? ` · ${quotaPercentage}%` : ''
-                    } · 点击充值`
+                  ? '正在加载吉米币余额'
+                  : `剩余 ${formatJimicoinNumber(quotaRemaining ?? 0)} 吉米币 · 点击充值`
               }
-              aria-label="额度与充值"
+              aria-label="吉米币余额与充值"
             >
               {quotaLoading ? (
-                <Loader2 size={14} aria-hidden="true" className="sync-chip-spin" />
+                <>
+                  <Loader2 size={14} aria-hidden="true" className="sync-chip-spin" />
+                  <span className="quota-chip-label">加载中</span>
+                </>
               ) : (
-                <Wallet size={14} aria-hidden="true" />
+                <AnimatedJimicoinBalance value={quotaRemaining ?? 0} size={14} />
               )}
-              <span className="quota-chip-label">
-                {quotaLoading ? '加载中' : formatBalanceAmount(quotaRemaining ?? 0)}
-              </span>
-              {!quotaLoading && quotaPercentage != null ? (
-                <span className="quota-chip-hint">{quotaPercentage}%</span>
-              ) : null}
               <span className="quota-chip-cta">充值</span>
             </button>
           ) : onRecharge ? (
@@ -195,10 +190,10 @@ export function Topbar({
               type="button"
               className="topbar-icon-button"
               onClick={onRecharge}
-              title="充值"
-              aria-label="充值"
+              title="充值吉米币"
+              aria-label="充值吉米币"
             >
-              <Wallet size={15} aria-hidden="true" />
+              <JimicoinIcon size={15} />
             </button>
           ) : null}
 

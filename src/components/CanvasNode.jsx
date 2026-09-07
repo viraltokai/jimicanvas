@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Bot,
   FileText,
@@ -21,6 +22,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { getNoteContentStyleCss } from '../lib/noteContentStyle';
+import { MediaUploadOverlay } from './MediaUploadOverlay';
 import {
   DEFAULT_NODE_HEIGHT,
   DEFAULT_NODE_WIDTH,
@@ -56,6 +58,7 @@ import {
   VEO_GENERATION_TYPE_OPTIONS,
   SEEDANCE_INPUT_MODE_OPTIONS,
   normalizeSeedanceInputMode,
+  normalizeVeoGenerationType,
   DEFAULT_IMAGE_URL,
   DEFAULT_VIDEO_URL,
   PLACEHOLDER_IMAGE,
@@ -81,7 +84,6 @@ import {
 import { getStoredChatToken } from '../lib/jimiaigoApi';
 import { normalizeTextModel, persistPreferredTextModel } from '../lib/textModel';
 import {
-  getSd2ManxueAssetList,
   getSoraRouteVisibility,
   normalizeVideoUrl,
   resolveSeedanceMediaPreviewUrl,
@@ -93,6 +95,7 @@ import {
   formatImageInputLabel,
   formatVideoInputLabel,
   getImageNodeOutputUrl,
+  getTextInputPreview,
   getVideoNodeOutputUrl,
   isImageToPromptNode,
   isVideoToPromptNode,
@@ -101,6 +104,7 @@ import {
   resolveNoteVideoInputUrls,
   resolveVideoToolbarFrames,
   resolveVideoToolbarReferences,
+  resolveVideoToolbarReferenceVideos,
 } from '../lib/connections';
 import {
   buildImageNodeLayoutPatch,
@@ -202,6 +206,137 @@ function OptionSegment({ title, options, value, onChange, renderIcon }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/** 工具栏生成次数：仅可多选时显示；用 portal 避免被 stage/toolbar overflow 裁切 */
+function GenerationCountControl({
+  options = [],
+  value = 1,
+  unit = '次',
+  open = false,
+  title = '生成次数',
+  menuRef = null,
+  onToggle,
+  onChange,
+}) {
+  const triggerRef = useRef(null);
+  const panelRef = useRef(null);
+  const [panelStyle, setPanelStyle] = useState(null);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPanelStyle(null);
+      return undefined;
+    }
+
+    const updatePosition = () => {
+      const anchor = triggerRef.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      const width = 104;
+      const left = Math.min(
+        Math.max(8, rect.left + rect.width / 2 - width / 2),
+        window.innerWidth - width - 8
+      );
+      let top = rect.bottom + 8;
+      const estimatedHeight = Math.min(220, 16 + options.length * 34);
+      if (top + estimatedHeight > window.innerHeight - 8) {
+        top = Math.max(8, rect.top - estimatedHeight - 8);
+      }
+      setPanelStyle({
+        position: 'fixed',
+        top,
+        left,
+        width,
+        zIndex: 1200,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [open, options.length]);
+
+  useEffect(() => {
+    if (!menuRef) return undefined;
+    if (!open) {
+      if (menuRef.current === panelRef.current || menuRef.current === triggerRef.current) {
+        menuRef.current = null;
+      }
+      return undefined;
+    }
+    menuRef.current = panelRef.current;
+    return () => {
+      if (menuRef.current === panelRef.current) menuRef.current = null;
+    };
+  }, [open, menuRef, panelStyle]);
+
+  if (!Array.isArray(options) || options.length <= 1) return null;
+
+  const menu =
+    open && panelStyle
+      ? createPortal(
+          <div
+            ref={panelRef}
+            className="generation-count-menu"
+            style={panelStyle}
+            role="listbox"
+            aria-label={title}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+          >
+            {options.map((option) => {
+              const isActive = Number(value) === Number(option.value);
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="option"
+                  aria-selected={isActive}
+                  className={`generation-count-menu-item${isActive ? ' is-active' : ''}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onChange?.(Number(option.value));
+                  }}
+                >
+                  <span>
+                    {option.value}
+                    {unit}
+                  </span>
+                  {isActive ? <Check size={12} aria-hidden="true" /> : <span className="generation-count-menu-spacer" />}
+                </button>
+              );
+            })}
+          </div>,
+          document.body
+        )
+      : null;
+
+  return (
+    <div className="generation-count-control">
+      <button
+        ref={triggerRef}
+        type="button"
+        className={`icon-button settings-trigger-btn generation-count-trigger${open ? ' active' : ''}`}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggle?.();
+        }}
+        title={title}
+        aria-label={title}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+      >
+        <span>×{value || 1}</span>
+        <ChevronDown size={12} aria-hidden="true" />
+      </button>
+      {menu}
     </div>
   );
 }
@@ -1289,149 +1424,398 @@ function getReferencePreviewUrls(references, resolvePreviewUrl = referencePrevie
   return references.map((image) => resolvePreviewUrl(image)).filter(Boolean);
 }
 
-function useSeedancePreviewSrc(item, mediaType) {
-  const direct = resolveSeedanceMediaPreviewUrl(item, mediaType);
-  const assetUrl = String(item?.url || '').trim();
-  const assetId =
-    item?.assetId || (assetUrl.startsWith('asset://') ? assetUrl.slice('asset://'.length) : '');
-  const needsFetch = !direct && Boolean(assetId);
+function useMediaHoverPopover(enabled) {
+  const [hoverOpen, setHoverOpen] = useState(false);
+  const [popoverStyle, setPopoverStyle] = useState(null);
+  const triggerRef = useRef(null);
+  const closeTimerRef = useRef(null);
 
-  const [src, setSrc] = useState(direct);
-  const [loading, setLoading] = useState(needsFetch);
+  const clearCloseTimer = () => {
+    if (closeTimerRef.current) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  };
 
-  useEffect(() => {
-    const resolved = resolveSeedanceMediaPreviewUrl(item, mediaType);
-    if (resolved) {
-      setSrc(resolved);
-      setLoading(false);
+  const updatePopoverPosition = () => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const width = Math.min(320, window.innerWidth - 24);
+    const left = Math.min(
+      Math.max(12, rect.left + rect.width / 2 - width / 2),
+      window.innerWidth - width - 12
+    );
+    const preferAbove = rect.top > 260;
+    setPopoverStyle({
+      position: 'fixed',
+      left: `${left}px`,
+      width: `${width}px`,
+      zIndex: 10050,
+      ...(preferAbove
+        ? { bottom: `${window.innerHeight - rect.top + 8}px`, top: 'auto' }
+        : { top: `${rect.bottom + 8}px`, bottom: 'auto' }),
+    });
+  };
+
+  useLayoutEffect(() => {
+    if (!hoverOpen || !enabled) {
+      setPopoverStyle(null);
       return undefined;
     }
-
-    if (!assetId) {
-      setSrc('');
-      setLoading(false);
-      return undefined;
-    }
-
-    let cancelled = false;
-    setLoading(true);
-    (async () => {
-      const token = getStoredChatToken();
-      if (!token) {
-        if (!cancelled) {
-          setSrc('');
-          setLoading(false);
-        }
-        return;
-      }
-      try {
-        const result = await getSd2ManxueAssetList({
-          token,
-          mediaType,
-          pageSize: 100,
-          status: 'Active',
-        });
-        if (cancelled) return;
-        const found = result.list.find((row) => row.assetId === assetId || row.id === assetId);
-        setSrc(found ? resolveSeedanceMediaPreviewUrl(found, mediaType) : '');
-      } catch {
-        if (!cancelled) setSrc('');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
+    updatePopoverPosition();
+    const onLayout = () => updatePopoverPosition();
+    window.addEventListener('resize', onLayout);
+    window.addEventListener('scroll', onLayout, true);
     return () => {
-      cancelled = true;
+      window.removeEventListener('resize', onLayout);
+      window.removeEventListener('scroll', onLayout, true);
     };
-  }, [item, mediaType, assetId]);
+  }, [hoverOpen, enabled]);
 
-  return { src, loading };
+  useEffect(() => () => clearCloseTimer(), []);
+
+  const openHover = () => {
+    if (!enabled) return;
+    clearCloseTimer();
+    setHoverOpen(true);
+  };
+
+  const scheduleCloseHover = () => {
+    clearCloseTimer();
+    closeTimerRef.current = window.setTimeout(() => setHoverOpen(false), 80);
+  };
+
+  return {
+    hoverOpen: hoverOpen && enabled,
+    popoverStyle,
+    triggerRef,
+    openHover,
+    scheduleCloseHover,
+  };
 }
 
-function SeedanceMediaPanel({
-  label,
-  icon: Icon,
-  mediaType,
-  items,
-  maxCount,
-  disabled,
-  disabledHint,
-  isRunning,
-  onPick,
-  onRemove,
-}) {
-  const isBlocked = Boolean(disabled && disabledHint);
-  return (
-    <div className={`seedance-media-panel ${isBlocked ? 'is-blocked' : ''}`}>
-      <div className="seedance-media-panel-header">
-        <Icon size={13} />
-        <span className="seedance-media-panel-title">{label}</span>
-        <span className="seedance-optional-tag">可选</span>
-        <span className="seedance-media-count">{items.length}/{maxCount}</span>
-        <button
-          type="button"
-          className="seedance-pick-btn"
-          onClick={onPick}
-          disabled={isRunning || disabled || items.length >= maxCount}
-          title={
-            disabledHint ||
-            (items.length >= maxCount ? `最多 ${maxCount} 个` : `从资产库选择${label}`)
-          }
-        >
-          <FolderOpen size={12} />
-          素材库
-        </button>
-      </div>
-      {items.length > 0 ? (
-        <div className={`seedance-media-preview-list ${mediaType === 'audio' ? 'is-audio' : ''}`}>
-          {items.map((item, index) => (
-            <SeedanceMediaPreviewCard
-              key={item.id || item.url || index}
-              item={item}
-              mediaType={mediaType}
-              label={label}
-              index={index}
-              icon={Icon}
-              onRemove={() => onRemove(index)}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="seedance-media-empty">暂未选择</div>
-      )}
-      {isBlocked ? <p className="seedance-media-hint">{disabledHint}</p> : null}
-    </div>
-  );
-}
+function OmniVideoChip({ item, index, disabled, onRemove, onPreview }) {
+  const previewSrc = resolveSeedanceMediaPreviewUrl(item, 'video');
+  const canPreview = Boolean(previewSrc);
+  const { hoverOpen, popoverStyle, triggerRef, openHover, scheduleCloseHover } =
+    useMediaHoverPopover(canPreview);
 
-function SeedanceMediaPreviewCard({ item, mediaType, label, index, icon: Icon, onRemove }) {
-  const { src: previewUrl, loading } = useSeedancePreviewSrc(item, mediaType);
+  const popover =
+    hoverOpen && previewSrc && popoverStyle
+      ? createPortal(
+          <div
+            className="seedance-omni-hover-preview is-video"
+            style={popoverStyle}
+            role="dialog"
+            aria-label={`视频${index + 1}预览`}
+            onPointerEnter={openHover}
+            onPointerLeave={scheduleCloseHover}
+          >
+            <video src={previewSrc} muted playsInline autoPlay loop preload="metadata" />
+            {item.name ? <span className="seedance-omni-hover-preview-name">{item.name}</span> : null}
+          </div>,
+          document.body
+        )
+      : null;
 
   return (
-    <div className="seedance-media-preview-item">
-      {mediaType === 'video' && previewUrl ? (
-        <video src={previewUrl} controls playsInline preload="metadata" />
-      ) : mediaType === 'audio' && previewUrl ? (
-        <audio src={previewUrl} controls preload="metadata" />
-      ) : (
-        <div className="seedance-media-preview-fallback">
-          <Icon size={18} />
-          <span>{loading ? '加载预览…' : '无法预览'}</span>
-        </div>
-      )}
-      <span className="seedance-media-name" title={item.name || `${label} ${index + 1}`}>
-        {item.name || `${label} ${index + 1}`}
-      </span>
-      <button type="button" className="seedance-media-remove" onClick={onRemove} title={`移除${label}`}>
+    <div className="seedance-omni-chip is-video">
+      <button
+        ref={triggerRef}
+        type="button"
+        className={`seedance-omni-chip-preview is-media${canPreview ? ' is-previewable' : ''}`}
+        title={canPreview ? item.name || `预览视频${index + 1}` : item.name || `视频${index + 1}`}
+        onPointerEnter={openHover}
+        onPointerLeave={scheduleCloseHover}
+        onClick={() => {
+          if (!canPreview) return;
+          onPreview?.(previewSrc, item.name || `视频${index + 1}`);
+        }}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <Film size={18} aria-hidden="true" />
+      </button>
+      <span className="seedance-omni-chip-label">视频{index + 1}</span>
+      <button
+        type="button"
+        className="seedance-omni-chip-remove"
+        onClick={() => onRemove?.(index)}
+        disabled={disabled}
+        title="移除参考视频"
+      >
         <X size={11} />
       </button>
+      {popover}
     </div>
   );
 }
 
-function VeoFrameSlot({ label, optional, image, disabled, blockedHint, onPick, onClear }) {
+/** 参考素材统一托盘：图片 / 视频 / 音频 / 文本分区 */
+function SeedanceOmniReferenceTray({
+  images = [],
+  videos = [],
+  audios = [],
+  textLinks = [],
+  maxImages = SEEDANCE_REF_IMAGE_MAX,
+  maxVideos = SEEDANCE_REF_VIDEO_MAX,
+  maxAudios = SEEDANCE_REF_AUDIO_MAX,
+  disabled = false,
+  imagePickLabel = '图片 · 资产库',
+  resolveImagePreview,
+  onPreviewImage,
+  onPreviewVideo,
+  onPickImage,
+  onPickVideo,
+  onPickAudio,
+  onRemoveImage,
+  onRemoveVideo,
+  onRemoveAudio,
+  onRemoveText,
+}) {
+  const [addOpen, setAddOpen] = useState(false);
+  const addRef = useRef(null);
+  const canAddImage = maxImages > 0 && images.length < maxImages;
+  const canAddVideo = maxVideos > 0 && videos.length < maxVideos;
+  const canAddAudio = maxAudios > 0 && audios.length < maxAudios;
+  const canAddAny = canAddImage || canAddVideo || canAddAudio;
+
+  useEffect(() => {
+    if (!addOpen) return undefined;
+    const onPointerDown = (event) => {
+      if (addRef.current?.contains(event.target)) return;
+      setAddOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, [addOpen]);
+
+  return (
+    <div className="seedance-omni-tray" aria-label="参考素材">
+      <div className="seedance-omni-tray-list">
+        {images.map((image, index) => {
+          const previewSrc = resolveImagePreview?.(image) || image.url;
+          return (
+          <div key={image.id || image.url || `image-${index}`} className="seedance-omni-chip is-image">
+            <button
+              type="button"
+              className={`seedance-omni-chip-preview${!previewSrc ? ' is-media' : ''}`}
+              onClick={() => onPreviewImage?.(index)}
+              disabled={!onPreviewImage || !previewSrc}
+              title={previewSrc ? '预览参考图' : image.name || '图片引用（等待生成）'}
+            >
+              {previewSrc ? <img src={previewSrc} alt="" /> : <ImageIcon size={18} aria-hidden="true" />}
+            </button>
+            <span className="seedance-omni-chip-label">图片{index + 1}</span>
+            <button
+              type="button"
+              className="seedance-omni-chip-remove"
+              onClick={() => onRemoveImage?.(index)}
+              disabled={disabled}
+              title="移除参考图"
+            >
+              <X size={11} />
+            </button>
+          </div>
+          );
+        })}
+
+        {videos.map((item, index) => (
+          <OmniVideoChip
+            key={item.id || item.url || `video-${index}`}
+            item={item}
+            index={index}
+            disabled={disabled}
+            onRemove={onRemoveVideo}
+            onPreview={onPreviewVideo}
+          />
+        ))}
+
+        {audios.map((item, index) => (
+          <div key={item.id || item.url || `audio-${index}`} className="seedance-omni-chip is-audio">
+            <div className="seedance-omni-chip-preview is-media" title={item.name || `音频${index + 1}`}>
+              <Headphones size={18} aria-hidden="true" />
+            </div>
+            <span className="seedance-omni-chip-label">音频{index + 1}</span>
+            <button
+              type="button"
+              className="seedance-omni-chip-remove"
+              onClick={() => onRemoveAudio?.(index)}
+              disabled={disabled}
+              title="移除参考音频"
+            >
+              <X size={11} />
+            </button>
+          </div>
+        ))}
+
+        {textLinks.length > 0 && (images.length > 0 || videos.length > 0 || audios.length > 0) ? (
+          <span className="seedance-omni-divider" aria-hidden="true" />
+        ) : null}
+
+        {textLinks.map(({ linkId, node: textNode }, index) => (
+          <div key={linkId} className="seedance-omni-chip is-text">
+            <div
+              className="seedance-omni-chip-preview is-media"
+              title={getTextInputPreview(textNode) || `文本${index + 1}`}
+            >
+              <FileText size={18} aria-hidden="true" />
+            </div>
+            <span className="seedance-omni-chip-label">文本{index + 1}</span>
+            <button
+              type="button"
+              className="seedance-omni-chip-remove"
+              onClick={() => onRemoveText?.(linkId)}
+              disabled={disabled}
+              title="移除文本引用并断开连线"
+            >
+              <X size={11} />
+            </button>
+          </div>
+        ))}
+
+        {canAddAny ? (
+          <div className="seedance-omni-add" ref={addRef}>
+            <button
+              type="button"
+              className="seedance-omni-add-btn"
+              disabled={disabled}
+              aria-expanded={addOpen}
+              aria-haspopup="menu"
+              title="从资产库添加参考"
+              onClick={() => setAddOpen((prev) => !prev)}
+            >
+              <FolderOpen size={16} aria-hidden="true" />
+            </button>
+            {addOpen ? (
+              <div className="seedance-omni-add-menu" role="menu">
+                {maxImages > 0 ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={disabled || !canAddImage}
+                    onClick={() => {
+                      setAddOpen(false);
+                      onPickImage?.();
+                    }}
+                  >
+                    {imagePickLabel}
+                  </button>
+                ) : null}
+                {maxVideos > 0 ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={disabled || !canAddVideo}
+                    onClick={() => {
+                      setAddOpen(false);
+                      onPickVideo?.();
+                    }}
+                  >
+                    视频 · 资产库
+                  </button>
+                ) : null}
+                {maxAudios > 0 ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={disabled || !canAddAudio}
+                    onClick={() => {
+                      setAddOpen(false);
+                      onPickAudio?.();
+                    }}
+                  >
+                    音频 · 资产库
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function VeoFrameSlot({ label, optional, image, disabled, blockedHint, onPick, onClear, onPreview }) {
   const isBlocked = Boolean(disabled && blockedHint);
+  const previewSrc = image ? referencePreviewSrc(image) : '';
+  const [hoverOpen, setHoverOpen] = useState(false);
+  const [popoverStyle, setPopoverStyle] = useState(null);
+  const triggerRef = useRef(null);
+  const closeTimerRef = useRef(null);
+
+  const clearCloseTimer = () => {
+    if (closeTimerRef.current) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  };
+
+  const updatePopoverPosition = () => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const width = Math.min(280, window.innerWidth - 24);
+    const left = Math.min(Math.max(12, rect.left + rect.width / 2 - width / 2), window.innerWidth - width - 12);
+    const spaceAbove = rect.top;
+    const preferAbove = spaceAbove > 240;
+    setPopoverStyle({
+      position: 'fixed',
+      left: `${left}px`,
+      width: `${width}px`,
+      zIndex: 10050,
+      ...(preferAbove
+        ? { bottom: `${window.innerHeight - rect.top + 8}px`, top: 'auto' }
+        : { top: `${rect.bottom + 8}px`, bottom: 'auto' }),
+    });
+  };
+
+  useLayoutEffect(() => {
+    if (!hoverOpen || !previewSrc) {
+      setPopoverStyle(null);
+      return undefined;
+    }
+    updatePopoverPosition();
+    const onLayout = () => updatePopoverPosition();
+    window.addEventListener('resize', onLayout);
+    window.addEventListener('scroll', onLayout, true);
+    return () => {
+      window.removeEventListener('resize', onLayout);
+      window.removeEventListener('scroll', onLayout, true);
+    };
+  }, [hoverOpen, previewSrc]);
+
+  useEffect(() => () => clearCloseTimer(), []);
+
+  const openHover = () => {
+    if (!previewSrc) return;
+    clearCloseTimer();
+    setHoverOpen(true);
+  };
+
+  const scheduleCloseHover = () => {
+    clearCloseTimer();
+    closeTimerRef.current = window.setTimeout(() => setHoverOpen(false), 80);
+  };
+
+  const popover =
+    hoverOpen && previewSrc && popoverStyle
+      ? createPortal(
+          <div
+            className="veo-frame-hover-preview"
+            style={popoverStyle}
+            role="dialog"
+            aria-label={`${label}预览`}
+            onPointerEnter={openHover}
+            onPointerLeave={scheduleCloseHover}
+          >
+            <img src={previewSrc} alt={label} />
+          </div>,
+          document.body
+        )
+      : null;
+
   return (
     <div className={`veo-frame-slot ${optional ? 'is-optional' : ''} ${isBlocked ? 'is-blocked' : ''}`}>
       <div className="veo-frame-slot-label">
@@ -1439,8 +1823,30 @@ function VeoFrameSlot({ label, optional, image, disabled, blockedHint, onPick, o
         {optional ? <span className="veo-frame-optional">可选</span> : null}
       </div>
       {image ? (
-        <div className="veo-frame-preview">
-          <img src={referencePreviewSrc(image)} alt={label} />
+        <div
+          ref={triggerRef}
+          className={`veo-frame-preview${onPreview && previewSrc ? ' is-previewable' : ''}`}
+          onPointerEnter={openHover}
+          onPointerLeave={scheduleCloseHover}
+        >
+          {onPreview && previewSrc ? (
+            <button
+              type="button"
+              className="veo-frame-preview-hit"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onPreview();
+              }}
+              onPointerDown={(event) => event.stopPropagation()}
+              title={`预览${label}`}
+              aria-label={`预览${label}`}
+            >
+              <img src={previewSrc} alt={label} />
+            </button>
+          ) : (
+            <img src={previewSrc} alt={label} />
+          )}
           <button type="button" onClick={onClear} disabled={disabled} title={`移除${label}`}>
             <X size={11} />
           </button>
@@ -1458,6 +1864,7 @@ function VeoFrameSlot({ label, optional, image, disabled, blockedHint, onPick, o
         </button>
       )}
       {isBlocked ? <span className="veo-frame-hint">{blockedHint}</span> : null}
+      {popover}
     </div>
   );
 }
@@ -1480,11 +1887,12 @@ export function VideoToolbar({
   onOpenEnlargedSettings,
   onVideoGenerationTypeChange,
   onPreviewImage,
+  onPreviewVideo,
   pricingList,
   userProfile,
 }) {
   const toolbarRef = useRef(null);
-  const [activePopover, setActivePopover] = useState(null); // 'model' | 'params' | null
+  const [activePopover, setActivePopover] = useState(null); // 'model' | 'params' | 'count' | null
   const [soraVisibility, setSoraVisibility] = useState(() => normalizeSoraRouteVisibility());
   const popoverRef = useRef(null);
   const modelTriggerRef = useRef(null);
@@ -1510,10 +1918,11 @@ export function VideoToolbar({
   useEffect(() => {
     if (!activePopover || activePopover === 'model') return;
     const handleOutsideClick = (event) => {
-      if (popoverRef.current && !popoverRef.current.contains(event.target)) {
-        if (event.target.closest?.('.settings-trigger-btn')) return;
-        setActivePopover(null);
-      }
+      const target = event.target;
+      if (target?.closest?.('.generation-count-menu')) return;
+      if (target?.closest?.('.settings-trigger-btn')) return;
+      if (popoverRef.current && popoverRef.current.contains(target)) return;
+      setActivePopover(null);
     };
     const timer = setTimeout(() => {
       document.addEventListener('click', handleOutsideClick);
@@ -1534,7 +1943,6 @@ export function VideoToolbar({
     firstConnectionLinkId,
     lastConnectionLinkId,
   } = resolveVideoToolbarFrames(node, imageInputLinks);
-  const referenceVideos = Array.isArray(node.videoReferenceVideos) ? node.videoReferenceVideos : [];
   const referenceAudios = Array.isArray(node.videoReferenceAudios) ? node.videoReferenceAudios : [];
   const family = inferVideoFamily(node);
   const isVeo = family === 'veo';
@@ -1545,30 +1953,60 @@ export function VideoToolbar({
   const isFlux3 = family === 'flux3';
   const isMinimax = family === 'minimax';
   const isWan30 = family === 'wan30';
-  const veoGenerationType = node.videoGenerationType || 'frame';
+  const veoGenerationType =
+    isVeo || isMinimax ? normalizeVeoGenerationType(node.videoGenerationType) : 'frame';
   const seedanceInputMode = isSeedance
+    ? normalizeSeedanceInputMode(node.videoGenerationType, node)
+    : 'frame';
+  const seedance25GzInputMode = isSeedance25Gz
     ? normalizeSeedanceInputMode(node.videoGenerationType, node)
     : 'frame';
   const flux3Mode = node.videoFlux3Mode || 't2v';
   const showVeoReferenceImages = isVeo && veoGenerationType === 'reference';
+  const showMinimaxReferenceImages = isMinimax && veoGenerationType === 'reference';
   const seedanceReferenceMode = isSeedance && seedanceInputMode === 'reference';
-  const showSeedanceReferenceImages = seedanceReferenceMode;
   const showSeedanceFrames = isSeedance && seedanceInputMode === 'frame';
   const hasSeedanceFrames = showSeedanceFrames && Boolean(resolvedFirstFrame || resolvedLastFrame);
-  const hasSeedanceReferenceImages = seedanceReferenceMode && resolvedReferences.length > 0;
-  const showSeedanceReferenceMedia = seedanceReferenceMode;
-  const showMinimaxFrames = isMinimax;
-  const showSeedance25GzFrames = isSeedance25Gz;
-  const hasSeedance25GzFrames = showSeedance25GzFrames && Boolean(resolvedFirstFrame || resolvedLastFrame);
+  const showMinimaxFrames = isMinimax && veoGenerationType === 'frame';
+  const showSeedance25GzFrames = isSeedance25Gz && seedance25GzInputMode === 'frame';
   const showFlux3Frames = isFlux3 && flux3Mode === 'flf';
   const showFlux3ReferenceImages = isFlux3 && (flux3Mode === 'i2v' || flux3Mode === 'keyframes');
-  const showGenericReferenceImages = !isVeo && !isSeedance && !isFlux3 && !(isSeedance25Gz && hasSeedance25GzFrames);
-  const showSeedance25Media = isSeedance25 || isSeedance25Gz || isWan30;
+  const showSeedance25Media =
+    isSeedance25 || isWan30 || (isSeedance25Gz && seedance25GzInputMode === 'reference');
+  // 仅图片参考的模型（不含已有独立模式切换的家族）
+  const showGenericReferenceImages =
+    !isVeo &&
+    !isSeedance &&
+    !isFlux3 &&
+    !isSeedance25Gz &&
+    !isMinimax &&
+    !showSeedance25Media;
   const seedance25VideoMax = isWan30
     ? WAN30_REF_VIDEO_MAX
     : isSeedance25Gz
       ? SEEDANCE25_GZ_REF_VIDEO_MAX
       : SEEDANCE25_REF_VIDEO_MAX;
+  const referenceVideoAssetMax = seedanceReferenceMode
+    ? SEEDANCE_REF_VIDEO_MAX
+    : showSeedance25Media
+      ? seedance25VideoMax
+      : 0;
+  const referenceVideos = resolveVideoToolbarReferenceVideos(
+    node,
+    videoInputLinks,
+    referenceVideoAssetMax
+  );
+  const showUnifiedReferenceTray =
+    seedanceReferenceMode ||
+    showSeedance25Media ||
+    showVeoReferenceImages ||
+    showMinimaxReferenceImages ||
+    showFlux3ReferenceImages ||
+    showGenericReferenceImages ||
+    referenceVideos.length > 0;
+  const showSeedanceStyleModeSwitch = isSeedance || isSeedance25Gz;
+  const seedanceStyleInputMode = isSeedance25Gz ? seedance25GzInputMode : seedanceInputMode;
+  const showFrameReferenceModeSwitch = isVeo || isMinimax;
   const seedance25AudioMax = isWan30 ? WAN30_REF_AUDIO_MAX : SEEDANCE25_REF_AUDIO_MAX;
   const familyOptions = getVisibleVideoFamilyOptions(soraVisibility);
   const familyGroups = getGroupedVideoFamilyOptions(soraVisibility);
@@ -1613,6 +2051,12 @@ export function VideoToolbar({
     if (!targetUrl || !onPreviewImage) return;
     const activeIndex = referencePreviewUrls.indexOf(targetUrl);
     onPreviewImage(referencePreviewUrls, activeIndex >= 0 ? activeIndex : 0);
+  }
+
+  function previewFrameImage(frame) {
+    const url = referencePreviewSrc(frame);
+    if (!url || !onPreviewImage) return;
+    onPreviewImage([url], 0);
   }
 
   useEffect(() => {
@@ -1675,12 +2119,13 @@ export function VideoToolbar({
   }, [
     variant,
     isSeedance,
+    showSeedanceStyleModeSwitch,
     node.id,
     resolvedReferences.length,
     referenceVideos.length,
     referenceAudios.length,
     hasSeedanceFrames,
-    hasSeedanceReferenceImages,
+    showUnifiedReferenceTray,
   ]);
 
   function patchVideoLayout(overrides = {}) {
@@ -1707,9 +2152,15 @@ export function VideoToolbar({
       status: 'idle',
     };
 
-    if (nextFamily === 'veo') {
+    if (nextFamily === 'veo' || nextFamily === 'minimax') {
       patch.videoGenerationType = nextSettings.generationType || 'frame';
-    } else if (nextFamily === 'seedance') {
+      if (patch.videoGenerationType === 'frame') {
+        patch.referenceImages = [];
+      } else {
+        patch.videoFirstFrame = null;
+        patch.videoLastFrame = null;
+      }
+    } else if (nextFamily === 'seedance' || nextFamily === 'seedance25gz') {
       patch.videoGenerationType =
         nextSettings.generationType || normalizeSeedanceInputMode(node.videoGenerationType, node);
     } else {
@@ -1749,10 +2200,13 @@ export function VideoToolbar({
       return;
     }
     const patch = { videoGenerationType: value, status: 'idle' };
+    const clearMediaRefs = isSeedance || isSeedance25Gz;
     if (value === 'frame') {
       patch.referenceImages = [];
-      patch.videoReferenceVideos = [];
-      patch.videoReferenceAudios = [];
+      if (clearMediaRefs) {
+        patch.videoReferenceVideos = [];
+        patch.videoReferenceAudios = [];
+      }
     } else if (value === 'reference') {
       patch.videoFirstFrame = null;
       patch.videoLastFrame = null;
@@ -1761,14 +2215,130 @@ export function VideoToolbar({
       patch.referenceImages = [];
       patch.videoFirstFrame = null;
       patch.videoLastFrame = null;
-      patch.videoReferenceVideos = [];
-      patch.videoReferenceAudios = [];
+      if (clearMediaRefs) {
+        patch.videoReferenceVideos = [];
+        patch.videoReferenceAudios = [];
+      }
     }
     onUpdateNode(node.id, patch);
   }
 
   function applySeedanceInputModeChange(value) {
     applyVeoGenerationTypeChange(value);
+  }
+
+  function getUnifiedTrayConfig() {
+    if (seedanceReferenceMode) {
+      return {
+        imagePickMode: 'seedance-reference',
+        imagePickLabel: '图片 · 素材库',
+        maxImages: SEEDANCE_REF_IMAGE_MAX,
+        maxVideos: SEEDANCE_REF_VIDEO_MAX,
+        maxAudios: SEEDANCE_REF_AUDIO_MAX,
+      };
+    }
+    if (showSeedance25Media) {
+      return {
+        imagePickMode: 'reference',
+        imagePickLabel: '图片 · 资产库',
+        maxImages: genericReferenceMax,
+        maxVideos: seedance25VideoMax,
+        maxAudios: seedance25AudioMax,
+      };
+    }
+    if (showVeoReferenceImages || showMinimaxReferenceImages) {
+      return {
+        imagePickMode: showVeoReferenceImages ? 'veo-reference' : 'reference',
+        imagePickLabel: '图片 · 资产库',
+        maxImages: showVeoReferenceImages ? VEO_REFERENCE_IMAGE_MAX : genericReferenceMax,
+        maxVideos: 0,
+        maxAudios: 0,
+      };
+    }
+    if (showFlux3ReferenceImages) {
+      const maxImages = flux3Mode === 'keyframes' ? FLUX3_REF_KEYFRAME_MAX : 1;
+      return {
+        imagePickMode: 'reference',
+        imagePickLabel: flux3Mode === 'keyframes' ? '关键帧 · 资产库' : '图片 · 资产库',
+        maxImages,
+        maxVideos: 0,
+        maxAudios: 0,
+      };
+    }
+    if (showGenericReferenceImages) {
+      return {
+        imagePickMode: 'reference',
+        imagePickLabel: requiresGrokReference ? '图片 · 资产库（必填）' : '图片 · 资产库',
+        maxImages: genericReferenceMax,
+        maxVideos: 0,
+        maxAudios: 0,
+      };
+    }
+    return null;
+  }
+
+  function renderUnifiedReferenceTray(overrides = {}) {
+    const config = { ...getUnifiedTrayConfig(), ...overrides };
+    if (!config?.imagePickMode && !overrides.imagePickMode) return null;
+    const imagePickMode = config.imagePickMode || 'reference';
+    return (
+      <SeedanceOmniReferenceTray
+        images={resolvedReferences}
+        videos={referenceVideos}
+        audios={referenceAudios}
+        textLinks={textInputLinks}
+        maxImages={config.maxImages ?? genericReferenceMax}
+        maxVideos={config.maxVideos ?? 0}
+        maxAudios={config.maxAudios ?? 0}
+        disabled={isRunning}
+        imagePickLabel={config.imagePickLabel || '图片 · 资产库'}
+        resolveImagePreview={referencePreviewSrc}
+        onPreviewImage={onPreviewImage ? previewReferenceAt : undefined}
+        onPreviewVideo={onPreviewVideo}
+        onPickImage={() => onOpenAssetLibrary(node.id, imagePickMode)}
+        onPickVideo={() =>
+          onOpenAssetLibrary(
+            node.id,
+            imagePickMode.startsWith('seedance-') ? 'seedance-ref-video' : 's25-ref-video'
+          )
+        }
+        onPickAudio={() =>
+          onOpenAssetLibrary(
+            node.id,
+            imagePickMode.startsWith('seedance-') ? 'seedance-ref-audio' : 's25-ref-audio'
+          )
+        }
+        onRemoveImage={(index) => removeVideoReferenceAt(index)}
+        onRemoveVideo={(index) => {
+          const item = referenceVideos[index];
+          if (item?.source === 'connection' && item.linkId) {
+            onRemoveTextReference(item.linkId);
+            return;
+          }
+          const assetOnly = referenceVideos.filter((video) => video.source !== 'connection');
+          const assetIndex = assetOnly.findIndex(
+            (video) =>
+              (item?.id && video.id === item.id) || (item?.url && video.url === item.url)
+          );
+          const currentAssets = Array.isArray(node.videoReferenceVideos)
+            ? node.videoReferenceVideos
+            : [];
+          const next =
+            assetIndex >= 0
+              ? currentAssets.filter((_, i) => i !== assetIndex)
+              : currentAssets.filter(
+                  (video) =>
+                    !(item?.id && video.id === item.id) && !(item?.url && video.url === item.url)
+                );
+          onUpdateNode(node.id, { videoReferenceVideos: next, status: 'idle' });
+        }}
+        onRemoveAudio={(index) => {
+          const next = referenceAudios.filter((_, i) => i !== index);
+          onUpdateNode(node.id, { videoReferenceAudios: next, status: 'idle' });
+        }}
+        onRemoveText={(linkId) => onRemoveTextReference(linkId)}
+      />
+    );
   }
 
   function removeVideoReferenceAt(index) {
@@ -1910,37 +2480,6 @@ export function VideoToolbar({
       />
     );
 
-  const videoModelPanels = (
-    <div className="settings-options-stack">
-      <GroupedOptionSegment
-        title="系列"
-        value={family}
-        groups={familyGroups}
-        onChange={(nextFamily) => {
-          applyFamilyChange(nextFamily);
-        }}
-      />
-      {modelOptions.length > 1 ? (
-        <OptionSegment
-          title={isSeedance25Ar ? '时长' : '模型'}
-          value={normalizedSettings.model}
-          options={modelOptions}
-          onChange={(value) => {
-            applyModelChange(value);
-          }}
-        />
-      ) : isSeedance ? (
-        <div className="option-segment video-model-fixed" title="Seedance 2.0 满血版">
-          <span className="option-segment-title">模型</span>
-          <div className="video-model-fixed-panel">
-            <span className="video-model-fixed-badge">满血版</span>
-            <span className="video-model-fixed-value">Seedance 2.0</span>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-
   const videoParamPanels = (
     <div className="settings-options-stack">
       <div className="settings-options-row">
@@ -1958,25 +2497,19 @@ export function VideoToolbar({
             }}
           />
         ) : null}
-        <OptionSegment
-          title="生成次数"
-          value={normalizedSettings.count}
-          options={countOptions.map((option) => ({ ...option, label: `${option.value}次` }))}
-          onChange={(value) => onUpdateNode(node.id, { videoCount: Number(value) })}
-        />
       </div>
-      {isVeo ? (
+      {showFrameReferenceModeSwitch ? (
         <OptionSegment
           title="生成类型"
-          value={normalizedSettings.generationType || 'frame'}
+          value={veoGenerationType}
           options={VEO_GENERATION_TYPE_OPTIONS}
           onChange={applyVeoGenerationTypeChange}
         />
       ) : null}
-      {isSeedance ? (
+      {showSeedanceStyleModeSwitch ? (
         <OptionSegment
           title="输入模式"
-          value={seedanceInputMode}
+          value={seedanceStyleInputMode}
           options={SEEDANCE_INPUT_MODE_OPTIONS}
           onChange={applySeedanceInputModeChange}
         />
@@ -2040,271 +2573,6 @@ export function VideoToolbar({
     </div>
   );
 
-  const videoSettingsPanels = (
-    <div className="settings-options-stack">
-      {videoModelPanels}
-      {videoParamPanels}
-    </div>
-  );
-
-  if (variant === 'modal') {
-    return (
-      <div
-        ref={toolbarRef}
-        className={`node-bottom-toolbar image-toolbar video-toolbar ${isSeedance ? 'video-toolbar-seedance' : ''} node-settings-toolbar-modal`}
-        onPointerDown={(event) => event.stopPropagation()}
-      >
-        <div className="modal-two-columns">
-          <div className="modal-left-column">
-            {showVeoReferenceImages || showSeedanceReferenceImages || showGenericReferenceImages || showFlux3ReferenceImages ? (
-              <div
-                className={`image-reference-row image-reference-row-top ${showSeedanceReferenceImages ? 'seedance-reference-row' : ''}`}
-              >
-                <span className="image-reference-label">
-                  {showSeedanceReferenceImages ? '参考图（满血版素材库）' : '参考图'}
-                </span>
-                <div className="image-reference-list">
-                  {resolvedReferences.map((image, index) => (
-                    <ReferenceImageChip
-                      key={image.id || image.url || index}
-                      image={image}
-                      index={index}
-                      previewSrc={referencePreviewSrc(image)}
-                      onPreview={
-                        onPreviewImage && referencePreviewSrc(image)
-                          ? () => previewReferenceAt(index)
-                          : undefined
-                      }
-                      onRemove={() => removeVideoReferenceAt(index)}
-                    />
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  className="prompt-asset-button prompt-asset-button--inline"
-                  onClick={() =>
-                    onOpenAssetLibrary(
-                      node.id,
-                      showVeoReferenceImages
-                        ? 'veo-reference'
-                        : showSeedanceReferenceImages
-                          ? 'seedance-reference'
-                          : 'reference'
-                    )
-                  }
-                  disabled={
-                    isRunning ||
-                    (showVeoReferenceImages && resolvedReferences.length >= VEO_REFERENCE_IMAGE_MAX) ||
-                    (showSeedanceReferenceImages && resolvedReferences.length >= SEEDANCE_REF_IMAGE_MAX) ||
-                    (showGenericReferenceImages && resolvedReferences.length >= genericReferenceMax) ||
-                    (showFlux3ReferenceImages &&
-                      resolvedReferences.length >=
-                        (flux3Mode === 'keyframes' ? FLUX3_REF_KEYFRAME_MAX : 1))
-                  }
-                  title={
-                    showVeoReferenceImages
-                      ? `从资产库选择参考图（最多 ${VEO_REFERENCE_IMAGE_MAX} 张）`
-                      : showSeedanceReferenceImages
-                        ? `从满血版素材库选择参考图（最多 ${SEEDANCE_REF_IMAGE_MAX} 张）`
-                        : showFlux3ReferenceImages
-                          ? `从资产库选择${flux3Mode === 'keyframes' ? '关键帧' : '参考图'}（最多 ${flux3Mode === 'keyframes' ? FLUX3_REF_KEYFRAME_MAX : 1} 张）`
-                          : `从资产库选择参考图（最多 ${genericReferenceMax} 张）`
-                  }
-                >
-                  <FolderOpen size={14} />
-                  资产库
-                </button>
-              </div>
-            ) : null}
-            {showVeoReferenceImages || showSeedanceReferenceImages || showGenericReferenceImages || showFlux3ReferenceImages ? (
-              <ReferencePromptInput
-                value={node.prompt || ''}
-                onChange={(prompt) => onUpdateNode(node.id, { prompt, status: 'idle' })}
-                references={resolvedReferences}
-                resolvePreviewUrl={(image) => referencePreviewSrc(image)}
-                placeholder="输入视频提示词"
-                disabled={isRunning}
-              />
-            ) : (
-              <div className="node-prompt-wrap node-prompt-wrap--plain">
-                <textarea
-                  className="node-prompt-input"
-                  value={node.prompt || ''}
-                  onChange={(event) => onUpdateNode(node.id, { prompt: event.target.value, status: 'idle' })}
-                  placeholder="输入视频提示词"
-                />
-              </div>
-            )}
-            {hasTextInput ? (
-              <div className="image-reference-row">
-                      <div className="image-reference-list">
-                  {textInputLinks.map(({ linkId, node: textNode }, index) => (
-                    <TextReferenceChip
-                      key={linkId}
-                      index={index}
-                      textNode={textNode}
-                      onRemove={() => onRemoveTextReference(linkId)}
-                    />
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
-          <div className="modal-right-column">
-            {videoSettingsPanels}
-            {isVeo && veoGenerationType === 'frame' ? (
-              <div className="veo-frame-row">
-                <VeoFrameSlot
-                  label="首帧"
-                  image={resolvedFirstFrame}
-                  disabled={isRunning}
-                  onPick={() => onOpenAssetLibrary(node.id, 'veo-first')}
-                  onClear={clearResolvedFirstFrame}
-                />
-                <VeoFrameSlot
-                  label="尾帧"
-                  optional
-                  image={resolvedLastFrame}
-                  disabled={isRunning || !resolvedFirstFrame}
-                  onPick={() => {
-                    if (!resolvedFirstFrame) return;
-                    onOpenAssetLibrary(node.id, 'veo-last');
-                  }}
-                  onClear={clearResolvedLastFrame}
-                />
-              </div>
-            ) : null}
-            {showMinimaxFrames || showFlux3Frames || showSeedance25GzFrames ? (
-              <div className="veo-frame-row">
-                <VeoFrameSlot
-                  label="首帧"
-                  optional
-                  image={resolvedFirstFrame}
-                  disabled={isRunning}
-                  onPick={() => onOpenAssetLibrary(node.id, 'veo-first')}
-                  onClear={clearResolvedFirstFrame}
-                />
-                <VeoFrameSlot
-                  label="尾帧"
-                  optional
-                  image={resolvedLastFrame}
-                  disabled={isRunning}
-                  onPick={() => onOpenAssetLibrary(node.id, 'veo-last')}
-                  onClear={clearResolvedLastFrame}
-                />
-              </div>
-            ) : null}
-            {showSeedance25Media ? (
-              <div className="seedance-section">
-                {seedance25VideoMax > 0 ? (
-                  <SeedanceMediaPanel
-                    label="参考视频"
-                    icon={Film}
-                    mediaType="video"
-                    items={referenceVideos}
-                    maxCount={seedance25VideoMax}
-                    disabled={isRunning}
-                    isRunning={isRunning}
-                    onPick={() => onOpenAssetLibrary(node.id, 's25-ref-video')}
-                    onRemove={(index) => {
-                      const next = referenceVideos.filter((_, i) => i !== index);
-                      onUpdateNode(node.id, { videoReferenceVideos: next, status: 'idle' });
-                    }}
-                  />
-                ) : (
-                  <p className="video-manxue-hint">Seedance 2.5 暂不支持参考视频</p>
-                )}
-                <SeedanceMediaPanel
-                  label="参考音频"
-                  icon={Headphones}
-                  mediaType="audio"
-                  items={referenceAudios}
-                  maxCount={seedance25AudioMax}
-                  disabled={isRunning}
-                  isRunning={isRunning}
-                  onPick={() => onOpenAssetLibrary(node.id, 's25-ref-audio')}
-                  onRemove={(index) => {
-                    const next = referenceAudios.filter((_, i) => i !== index);
-                    onUpdateNode(node.id, { videoReferenceAudios: next, status: 'idle' });
-                  }}
-                />
-              </div>
-            ) : null}
-            {isSeedance ? (
-              <div className="seedance-mode-switch" role="tablist" aria-label="Seedance 输入模式">
-                {SEEDANCE_INPUT_MODE_OPTIONS.map((option) => {
-                  const isActive = seedanceInputMode === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      role="tab"
-                      aria-selected={isActive}
-                      className={`seedance-mode-switch-btn${isActive ? ' is-active' : ''}`}
-                      disabled={isRunning}
-                      onClick={() => applySeedanceInputModeChange(option.value)}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
-            {isSeedance ? (
-              <p className="video-manxue-hint">
-                先选择模式：全能参考、文生视频、首尾帧互斥。素材需从满血版素材库选择。
-              </p>
-            ) : null}
-            {showSeedanceFrames ? (
-              <div className="seedance-section">
-                <div className="seedance-section-title">首尾帧</div>
-                <div className="veo-frame-row seedance-frame-row">
-                  <VeoFrameSlot
-                    label="首帧"
-                    image={resolvedFirstFrame}
-                    disabled={isRunning}
-                    onPick={() => onOpenAssetLibrary(node.id, 'seedance-first')}
-                    onClear={clearResolvedFirstFrame}
-                  />
-                  <VeoFrameSlot
-                    label="尾帧"
-                    optional
-                    image={resolvedLastFrame}
-                    disabled={isRunning || !resolvedFirstFrame}
-                    onPick={() => {
-                      if (!resolvedFirstFrame) return;
-                      onOpenAssetLibrary(node.id, 'seedance-last');
-                    }}
-                    onClear={clearResolvedLastFrame}
-                  />
-                </div>
-              </div>
-            ) : null}
-
-            <div className="node-bottom-actions image-bottom-actions">
-              <button
-                className="icon-button"
-                onClick={() => onRunVideoGeneration(node, 'translate')}
-                title="翻译提示词"
-                disabled={isTranslating || isRunning || isPromptEmpty}
-              >
-                {isTranslating ? <LoaderCircle size={14} className="spin-icon" /> : <Languages size={14} />}
-                翻译
-              </button>
-              <RunActionButton
-                title="运行视频生成"
-                isRunning={isRunning}
-                disabled={isRunning || isTranslating || isPromptEmpty}
-                cost={pricingList ? videoCost : null}
-                onClick={() => onRunVideoGeneration(node)}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const durationLabel = node.videoDuration ? `${node.videoDuration}s` : '';
   const summaryParts = [
     durationLabel,
@@ -2328,45 +2596,88 @@ export function VideoToolbar({
 
   const settingsContent = activePopover === 'params' ? videoParamPanels : null;
 
-  const showRefImageBtn = showVeoReferenceImages || showGenericReferenceImages || showFlux3ReferenceImages;
-  const maxRefImageCount = showVeoReferenceImages
-    ? VEO_REFERENCE_IMAGE_MAX
-    : showFlux3ReferenceImages
-      ? flux3Mode === 'keyframes'
-        ? FLUX3_REF_KEYFRAME_MAX
-        : 1
-      : genericReferenceMax;
+  const extraActions =
+    variant === 'dock' && onOpenEnlargedSettings ? (
+      <NodeEnlargeButton title="放大编辑提示词" onClick={onOpenEnlargedSettings} />
+    ) : null;
 
-  const extraActions = (
+  const frameSlotsAbovePrompt = (
     <>
-      {showRefImageBtn && (
-        <button
-          type="button"
-          className="prompt-asset-button"
-          onClick={() =>
-            onOpenAssetLibrary(
-              node.id,
-              showVeoReferenceImages ? 'veo-reference' : 'reference'
-            )
-          }
-          disabled={
-            isRunning ||
-            (showVeoReferenceImages && resolvedReferences.length >= VEO_REFERENCE_IMAGE_MAX) ||
-            (showFlux3ReferenceImages &&
-              resolvedReferences.length >= (flux3Mode === 'keyframes' ? FLUX3_REF_KEYFRAME_MAX : 1)) ||
-            (showGenericReferenceImages && resolvedReferences.length >= genericReferenceMax)
-          }
-          title={
-            showVeoReferenceImages
-              ? `从资产库选择参考图（最多 ${VEO_REFERENCE_IMAGE_MAX} 张）`
-              : `从资产库选择参考图（最多 ${maxRefImageCount} 张）`
-          }
-        >
-          <FolderOpen size={14} />
-        </button>
-      )}
-      {variant === 'dock' && onOpenEnlargedSettings ? (
-        <NodeEnlargeButton title="放大编辑设置" onClick={onOpenEnlargedSettings} />
+      {showSeedanceFrames ? (
+        <div className="seedance-above-prompt">
+          <div className="seedance-above-row">
+            <VeoFrameSlot
+              label="首帧"
+              image={resolvedFirstFrame}
+              disabled={isRunning}
+              onPick={() => onOpenAssetLibrary(node.id, 'seedance-first')}
+              onClear={clearResolvedFirstFrame}
+              onPreview={onPreviewImage ? () => previewFrameImage(resolvedFirstFrame) : undefined}
+            />
+            <VeoFrameSlot
+              label="尾帧"
+              optional
+              image={resolvedLastFrame}
+              disabled={isRunning || !resolvedFirstFrame}
+              onPick={() => {
+                if (!resolvedFirstFrame) return;
+                onOpenAssetLibrary(node.id, 'seedance-last');
+              }}
+              onClear={clearResolvedLastFrame}
+              onPreview={onPreviewImage ? () => previewFrameImage(resolvedLastFrame) : undefined}
+            />
+          </div>
+        </div>
+      ) : null}
+      {isVeo && veoGenerationType === 'frame' ? (
+        <div className="seedance-above-prompt">
+          <div className="veo-frame-row">
+            <VeoFrameSlot
+              label="首帧"
+              image={resolvedFirstFrame}
+              disabled={isRunning}
+              onPick={() => onOpenAssetLibrary(node.id, 'veo-first')}
+              onClear={clearResolvedFirstFrame}
+              onPreview={onPreviewImage ? () => previewFrameImage(resolvedFirstFrame) : undefined}
+            />
+            <VeoFrameSlot
+              label="尾帧"
+              optional
+              image={resolvedLastFrame}
+              disabled={isRunning || !resolvedFirstFrame}
+              onPick={() => {
+                if (!resolvedFirstFrame) return;
+                onOpenAssetLibrary(node.id, 'veo-last');
+              }}
+              onClear={clearResolvedLastFrame}
+              onPreview={onPreviewImage ? () => previewFrameImage(resolvedLastFrame) : undefined}
+            />
+          </div>
+        </div>
+      ) : null}
+      {showMinimaxFrames || showFlux3Frames || showSeedance25GzFrames ? (
+        <div className="seedance-above-prompt">
+          <div className="veo-frame-row">
+            <VeoFrameSlot
+              label="首帧"
+              optional
+              image={resolvedFirstFrame}
+              disabled={isRunning}
+              onPick={() => onOpenAssetLibrary(node.id, 'veo-first')}
+              onClear={clearResolvedFirstFrame}
+              onPreview={onPreviewImage ? () => previewFrameImage(resolvedFirstFrame) : undefined}
+            />
+            <VeoFrameSlot
+              label="尾帧"
+              optional
+              image={resolvedLastFrame}
+              disabled={isRunning}
+              onPick={() => onOpenAssetLibrary(node.id, 'veo-last')}
+              onClear={clearResolvedLastFrame}
+              onPreview={onPreviewImage ? () => previewFrameImage(resolvedLastFrame) : undefined}
+            />
+          </div>
+        </div>
       ) : null}
     </>
   );
@@ -2374,259 +2685,58 @@ export function VideoToolbar({
   return (
     <div
       ref={toolbarRef}
-      className={`node-bottom-toolbar image-toolbar video-toolbar ${isSeedance ? 'video-toolbar-seedance' : ''} ${variant === 'modal' ? 'node-settings-toolbar-modal' : ''}`}
+      className={`node-bottom-toolbar image-toolbar video-toolbar ${showSeedanceStyleModeSwitch || showFrameReferenceModeSwitch ? 'video-toolbar-seedance' : ''} ${variant === 'modal' ? 'node-settings-toolbar-modal' : ''}`}
       onPointerDown={(event) => event.stopPropagation()}
     >
-      {variant === 'dock' ? (
-        resolvedReferences.length > 0 && !isSeedance ? (
-          <div className="image-reference-row image-reference-row-top image-reference-row-chips-only">
-            <div className="image-reference-list">
-              {resolvedReferences.map((image, index) => {
-                const isConnection = image.source === 'connection';
-                const assetIndex = isConnection
-                  ? -1
-                  : assetReferences.findIndex((ref) => ref.id === image.id);
-
-                return (
-                  <ReferenceImageChip
-                    key={image.id || image.url || index}
-                    image={image}
-                    index={index}
-                    previewSrc={referencePreviewSrc(image)}
-                    onPreview={() => previewReferenceAt(index)}
-                    onRemove={() => {
-                      if (isConnection) {
-                        onRemoveTextReference(image.linkId);
-                      } else if (assetIndex >= 0) {
-                        const nextRefs = [...assetReferences];
-                        nextRefs.splice(assetIndex, 1);
-                        onUpdateNode(node.id, { referenceImages: nextRefs });
-                      }
-                    }}
-                    removeTitle={isConnection ? '移除图片引用并断开连线' : '移除参考图'}
-                  />
-                );
-              })}
-            </div>
-          </div>
-        ) : isSeedance ? (
-          <>
-            <div className="seedance-mode-switch" role="tablist" aria-label="Seedance 输入模式">
-              {SEEDANCE_INPUT_MODE_OPTIONS.map((option) => {
-                const isActive = seedanceInputMode === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    role="tab"
-                    aria-selected={isActive}
-                    className={`seedance-mode-switch-btn${isActive ? ' is-active' : ''}`}
-                    disabled={isRunning}
-                    onClick={() => applySeedanceInputModeChange(option.value)}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            {showSeedanceFrames ? (
-              <div className="seedance-above-prompt">
-                <div className="seedance-above-row">
-                  <VeoFrameSlot
-                    label="首帧"
-                    image={resolvedFirstFrame}
-                    disabled={isRunning}
-                    onPick={() => onOpenAssetLibrary(node.id, 'seedance-first')}
-                    onClear={clearResolvedFirstFrame}
-                  />
-                  <VeoFrameSlot
-                    label="尾帧"
-                    optional
-                    image={resolvedLastFrame}
-                    disabled={isRunning || !resolvedFirstFrame}
-                    onPick={() => {
-                      if (!resolvedFirstFrame) return;
-                      onOpenAssetLibrary(node.id, 'seedance-last');
-                    }}
-                    onClear={clearResolvedLastFrame}
-                  />
-                </div>
-              </div>
-            ) : null}
-
-            {seedanceReferenceMode ? (
-              <div className="seedance-above-prompt">
-                <div className="seedance-above-row">
-                  <VeoFrameSlot
-                    label="参考图"
-                    image={resolvedReferences[0]}
-                    disabled={isRunning}
-                    onPick={() => onOpenAssetLibrary(node.id, 'seedance-reference')}
-                    onClear={() => onUpdateNode(node.id, { referenceImages: [] })}
-                  />
-                </div>
-                {resolvedReferences.length > 1 ? (
-                  <div className="image-reference-list seedance-extra-refs">
-                    {resolvedReferences.slice(1).map((image, index) => (
-                      <ReferenceImageChip
-                        key={image.id || image.url || index + 1}
-                        image={image}
-                        index={index + 1}
-                        previewSrc={referencePreviewSrc(image)}
-                        onPreview={() => previewReferenceAt(index + 1)}
-                        onRemove={() => removeVideoReferenceAt(index + 1)}
-                        removeTitle="移除参考图"
-                      />
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </>
-        ) : null
-      ) : (
-        isSeedance ? (
-          <div className="seedance-section seedance-first-frame-select">
-            <div className="seedance-mode-switch" role="tablist" aria-label="Seedance 输入模式">
-              {SEEDANCE_INPUT_MODE_OPTIONS.map((option) => {
-                const isActive = seedanceInputMode === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    role="tab"
-                    aria-selected={isActive}
-                    className={`seedance-mode-switch-btn${isActive ? ' is-active' : ''}`}
-                    disabled={isRunning}
-                    onClick={() => applySeedanceInputModeChange(option.value)}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-            {showSeedanceFrames ? (
-              <div className="veo-frame-row seedance-frame-row">
-                <VeoFrameSlot
-                  label="首帧"
-                  image={resolvedFirstFrame}
-                  disabled={isRunning}
-                  onPick={() => onOpenAssetLibrary(node.id, 'seedance-first')}
-                  onClear={clearResolvedFirstFrame}
-                />
-                <VeoFrameSlot
-                  label="尾帧"
-                  optional
-                  image={resolvedLastFrame}
-                  disabled={isRunning || !resolvedFirstFrame}
-                  onPick={() => {
-                    if (!resolvedFirstFrame) return;
-                    onOpenAssetLibrary(node.id, 'seedance-last');
-                  }}
-                  onClear={clearResolvedLastFrame}
-                />
-              </div>
-            ) : null}
-            {seedanceReferenceMode ? (
-              <VeoFrameSlot
-                label="参考图"
-                image={resolvedReferences[0]}
+      {showSeedanceStyleModeSwitch ? (
+        <div className="seedance-mode-switch" role="tablist" aria-label="输入模式">
+          {SEEDANCE_INPUT_MODE_OPTIONS.map((option) => {
+            const isActive = seedanceStyleInputMode === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                className={`seedance-mode-switch-btn${isActive ? ' is-active' : ''}`}
                 disabled={isRunning}
-                onPick={() => onOpenAssetLibrary(node.id, 'seedance-reference')}
-                onClear={() => onUpdateNode(node.id, { referenceImages: [] })}
-              />
-            ) : null}
-          </div>
-        ) : showGenericReferenceImages || showFlux3ReferenceImages ? (
-          <div className="image-reference-row image-reference-row-top">
-            <span className="image-reference-label">
-              {requiresGrokReference ? '参考图（必填 1 张）' : '参考图'}
-            </span>
-            <div className="image-reference-list">
-              {resolvedReferences.map((image, index) => {
-                const isConnection = image.source === 'connection';
-                const assetIndex = isConnection
-                  ? -1
-                  : assetReferences.findIndex((ref) => ref.id === image.id);
+                onClick={() => applySeedanceInputModeChange(option.value)}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
 
-                return (
-                  <ReferenceImageChip
-                    key={image.id || image.url || index}
-                    image={image}
-                    index={index}
-                    previewSrc={referencePreviewSrc(image)}
-                    onPreview={() => previewReferenceAt(index)}
-                    onRemove={() => {
-                      if (isConnection) {
-                        onRemoveTextReference(image.linkId);
-                      } else if (assetIndex >= 0) {
-                        const nextRefs = [...assetReferences];
-                        nextRefs.splice(assetIndex, 1);
-                        onUpdateNode(node.id, { referenceImages: nextRefs });
-                      }
-                    }}
-                    removeTitle={isConnection ? '移除图片引用并断开连线' : '移除参考图'}
-                  />
-                );
-              })}
-            </div>
-            <button
-              type="button"
-              className="prompt-asset-button prompt-asset-button--inline"
-              onClick={() => onOpenAssetLibrary(node.id, 'reference')}
-              disabled={isRunning || resolvedReferences.length >= genericReferenceMax}
-              title={`从资产库选择参考图（最多 ${genericReferenceMax} 张，支持多选）`}
-            >
-              <FolderOpen size={14} />
-              参考图
-            </button>
-          </div>
-        ) : showVeoReferenceImages ? (
-          <div className="image-reference-row image-reference-row-top">
-            <span className="image-reference-label">参考图</span>
-            <div className="image-reference-list">
-              {resolvedReferences.map((image, index) => {
-                const isConnection = image.source === 'connection';
-                const assetIndex = isConnection
-                  ? -1
-                  : assetReferences.findIndex((ref) => ref.id === image.id);
+      {showFrameReferenceModeSwitch ? (
+        <div className="seedance-mode-switch" role="tablist" aria-label="生成类型">
+          {VEO_GENERATION_TYPE_OPTIONS.map((option) => {
+            const isActive = veoGenerationType === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                className={`seedance-mode-switch-btn${isActive ? ' is-active' : ''}`}
+                disabled={isRunning}
+                onClick={() => applyVeoGenerationTypeChange(option.value)}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
 
-                return (
-                  <ReferenceImageChip
-                    key={image.id || image.url || index}
-                    image={image}
-                    index={index}
-                    previewSrc={referencePreviewSrc(image)}
-                    onPreview={() => previewReferenceAt(index)}
-                    onRemove={() => {
-                      if (isConnection) {
-                        onRemoveTextReference(image.linkId);
-                      } else if (assetIndex >= 0) {
-                        const nextRefs = [...assetReferences];
-                        nextRefs.splice(assetIndex, 1);
-                        onUpdateNode(node.id, { referenceImages: nextRefs });
-                      }
-                    }}
-                    removeTitle={isConnection ? '移除图片引用并断开连线' : '移除参考图'}
-                  />
-                );
-              })}
-            </div>
-            <button
-              type="button"
-              className="prompt-asset-button prompt-asset-button--inline"
-              onClick={() => onOpenAssetLibrary(node.id, 'reference')}
-              disabled={isRunning || resolvedReferences.length >= VEO_REFERENCE_IMAGE_MAX}
-              title={`从资产库选择参考图（最多 ${VEO_REFERENCE_IMAGE_MAX} 张，支持多选）`}
-            >
-              <FolderOpen size={14} />
-              参考图
-            </button>
-          </div>
-        ) : null
-      )}
-      {hasTextInput ? (
+      {frameSlotsAbovePrompt}
+
+      {showUnifiedReferenceTray ? (
+        <div className="seedance-above-prompt">{renderUnifiedReferenceTray()}</div>
+      ) : null}
+
+      {hasTextInput && !showUnifiedReferenceTray ? (
         <div className="image-reference-row">
           <div className="image-reference-list">
             {textInputLinks.map(({ linkId, node: textNode }, index) => (
@@ -2640,6 +2750,7 @@ export function VideoToolbar({
           </div>
         </div>
       ) : null}
+
       {family !== 'seedance' && family !== 'sora' ? (
         <ReferencePromptInput
           value={node.prompt || ''}
@@ -2658,32 +2769,27 @@ export function VideoToolbar({
             onChange={(event) => onUpdateNode(node.id, { prompt: event.target.value, status: 'idle' })}
             placeholder="输入视频提示词"
           />
-          {extraActions && <div className="prompt-editor-actions">{extraActions}</div>}
+          {extraActions ? <div className="prompt-editor-actions">{extraActions}</div> : null}
         </div>
       )}
 
-      {variant === 'modal' ? (
-        videoSettingsPanels
-      ) : (
-        showSettingsPopover &&
-        activePopover === 'params' && (
-          isSeedance ? (
-            <div className="toolbar-settings-inline" ref={popoverRef} data-popover={activePopover}>
-              {settingsContent}
-            </div>
-          ) : (
-            <div
-              className={`toolbar-settings-popover toolbar-settings-popover--${activePopover}`}
-              ref={popoverRef}
-              data-popover={activePopover}
-            >
-              {settingsContent}
-            </div>
-          )
+      {showSettingsPopover && activePopover === 'params' ? (
+        isSeedance ? (
+          <div className="toolbar-settings-inline" ref={popoverRef} data-popover={activePopover}>
+            {settingsContent}
+          </div>
+        ) : (
+          <div
+            className="toolbar-settings-popover toolbar-settings-popover--params"
+            ref={popoverRef}
+            data-popover={activePopover}
+          >
+            {settingsContent}
+          </div>
         )
-      )}
+      ) : null}
 
-      {variant !== 'modal' && activePopover === 'model' ? (
+      {activePopover === 'model' ? (
         <VideoModelPickerPopover
           anchorRef={modelTriggerRef}
           family={family}
@@ -2709,117 +2815,46 @@ export function VideoToolbar({
         />
       ) : null}
 
-      {isVeo && veoGenerationType === 'frame' ? (
-        <div className="veo-frame-row">
-          <VeoFrameSlot
-            label="首帧"
-            image={resolvedFirstFrame}
-            disabled={isRunning}
-            onPick={() => onOpenAssetLibrary(node.id, 'veo-first')}
-            onClear={clearResolvedFirstFrame}
-          />
-          <VeoFrameSlot
-            label="尾帧"
-            optional
-            image={resolvedLastFrame}
-            disabled={isRunning || !resolvedFirstFrame}
-            onPick={() => {
-              if (!resolvedFirstFrame) return;
-              onOpenAssetLibrary(node.id, 'veo-last');
-            }}
-            onClear={clearResolvedLastFrame}
-          />
-        </div>
-      ) : null}
-      {showMinimaxFrames || showFlux3Frames || showSeedance25GzFrames ? (
-        <div className="veo-frame-row">
-          <VeoFrameSlot
-            label="首帧"
-            optional
-            image={resolvedFirstFrame}
-            disabled={isRunning}
-            onPick={() => onOpenAssetLibrary(node.id, 'veo-first')}
-            onClear={clearResolvedFirstFrame}
-          />
-          <VeoFrameSlot
-            label="尾帧"
-            optional
-            image={resolvedLastFrame}
-            disabled={isRunning}
-            onPick={() => onOpenAssetLibrary(node.id, 'veo-last')}
-            onClear={clearResolvedLastFrame}
-          />
-        </div>
-      ) : null}
-
-      {showSeedance25Media ? (
-        <div className="seedance-section">
-          {seedance25VideoMax > 0 ? (
-            <SeedanceMediaPanel
-              label="参考视频"
-              icon={Film}
-              mediaType="video"
-              items={referenceVideos}
-              maxCount={seedance25VideoMax}
-              disabled={isRunning}
-              isRunning={isRunning}
-              onPick={() => onOpenAssetLibrary(node.id, 's25-ref-video')}
-              onRemove={(index) => {
-                const next = referenceVideos.filter((_, i) => i !== index);
-                onUpdateNode(node.id, { videoReferenceVideos: next, status: 'idle' });
-              }}
-            />
-          ) : (
-            <p className="video-manxue-hint">Seedance 2.5 暂不支持参考视频</p>
-          )}
-          <SeedanceMediaPanel
-            label="参考音频"
-            icon={Headphones}
-            mediaType="audio"
-            items={referenceAudios}
-            maxCount={seedance25AudioMax}
-            disabled={isRunning}
-            isRunning={isRunning}
-            onPick={() => onOpenAssetLibrary(node.id, 's25-ref-audio')}
-            onRemove={(index) => {
-              const next = referenceAudios.filter((_, i) => i !== index);
-              onUpdateNode(node.id, { videoReferenceAudios: next, status: 'idle' });
-            }}
-          />
-        </div>
-      ) : null}
-
       <div className="node-bottom-actions image-bottom-actions">
-        {variant !== 'modal' && (
-          <>
-            <button
-              ref={modelTriggerRef}
-              type="button"
-              className={`icon-button settings-trigger-btn ${activePopover === 'model' ? 'active' : ''}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                setActivePopover((prev) => (prev === 'model' ? null : 'model'));
-              }}
-              title="选择模型"
-            >
-              <ModelIcon name={videoModelIconName} size={14} />
-              <span>{modelTriggerText}</span>
-              <ChevronDown size={12} />
-            </button>
-            <button
-              type="button"
-              className={`icon-button settings-trigger-btn ${activePopover === 'params' ? 'active' : ''}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                setActivePopover((prev) => (prev === 'params' ? null : 'params'));
-              }}
-              title="参数设置"
-            >
-              <SlidersHorizontal size={14} />
-              <span>{summaryText}</span>
-            </button>
-          </>
-        )}
+        <button
+          ref={modelTriggerRef}
+          type="button"
+          className={`icon-button settings-trigger-btn ${activePopover === 'model' ? 'active' : ''}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            setActivePopover((prev) => (prev === 'model' ? null : 'model'));
+          }}
+          title="选择模型"
+        >
+          <ModelIcon name={videoModelIconName} size={14} />
+          <span>{modelTriggerText}</span>
+          <ChevronDown size={12} />
+        </button>
+        <button
+          type="button"
+          className={`icon-button settings-trigger-btn ${activePopover === 'params' ? 'active' : ''}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            setActivePopover((prev) => (prev === 'params' ? null : 'params'));
+          }}
+          title="参数设置"
+        >
+          <SlidersHorizontal size={14} />
+          <span>{summaryText}</span>
+        </button>
+        <GenerationCountControl
+          options={countOptions}
+          value={normalizedSettings.count || 1}
+          unit="次"
+          open={activePopover === 'count'}
+          title="生成次数"
+          menuRef={popoverRef}
+          onToggle={() => setActivePopover((prev) => (prev === 'count' ? null : 'count'))}
+          onChange={(nextCount) => {
+            onUpdateNode(node.id, { videoCount: nextCount });
+            setActivePopover(null);
+          }}
+        />
 
         <div className="node-run-actions">
           <button
@@ -2861,17 +2896,18 @@ export function ImageToolbar({
   pricingList,
   userProfile,
 }) {
-  const [activePopover, setActivePopover] = useState(null); // 'model' | 'params' | null
+  const [activePopover, setActivePopover] = useState(null); // 'model' | 'params' | 'count' | null
   const popoverRef = useRef(null);
   const modelTriggerRef = useRef(null);
 
   useEffect(() => {
     if (!activePopover || activePopover === 'model') return;
     const handleOutsideClick = (event) => {
-      if (popoverRef.current && !popoverRef.current.contains(event.target)) {
-        if (event.target.closest?.('.settings-trigger-btn')) return;
-        setActivePopover(null);
-      }
+      const target = event.target;
+      if (target?.closest?.('.generation-count-menu')) return;
+      if (target?.closest?.('.settings-trigger-btn')) return;
+      if (popoverRef.current && popoverRef.current.contains(target)) return;
+      setActivePopover(null);
     };
     const timer = setTimeout(() => {
       document.addEventListener('click', handleOutsideClick);
@@ -2934,7 +2970,6 @@ export function ImageToolbar({
     normalizedSettings.resolution,
     qualityOptions.length > 0 ? (normalizedSettings.quality || 'auto') : '',
     normalizedSettings.ratio,
-    normalizedSettings.count ? `${normalizedSettings.count}张` : '',
   ].filter(Boolean);
   const summaryText = summaryParts.join(' | ') || '参数';
 
@@ -2959,20 +2994,6 @@ export function ImageToolbar({
     });
   }
 
-  const imageModelPanels = (
-    <div className="settings-options-stack">
-      <OptionSegment
-        title="模型"
-        value={model}
-        options={modelOptions}
-        onChange={(value) => {
-          applyImageModelChange(value);
-          setActivePopover(null);
-        }}
-      />
-    </div>
-  );
-
   const imageParamPanels = (
     <div className="settings-options-stack">
       <div className="settings-options-row">
@@ -2992,16 +3013,6 @@ export function ImageToolbar({
             onChange={(value) => onUpdateNode(node.id, { imageQuality: value, status: 'idle' })}
           />
         ) : null}
-        <OptionSegment
-          title="生成数量"
-          value={normalizedSettings.count}
-          options={countOptions.map((option) => ({ ...option, label: `${option.value}张` }))}
-          onChange={(value) =>
-            onUpdateNode(node.id, {
-              imageCount: Number(value),
-            })
-          }
-        />
       </div>
       <OptionSegment
         title="尺寸"
@@ -3018,15 +3029,7 @@ export function ImageToolbar({
     </div>
   );
 
-  const settingsContent =
-    variant === 'modal' ? (
-      <div className="settings-options-stack">
-        {imageModelPanels}
-        {imageParamPanels}
-      </div>
-    ) : activePopover === 'params' ? (
-      imageParamPanels
-    ) : null;
+  const settingsContent = activePopover === 'params' ? imageParamPanels : null;
 
   const extraActions = (
     <>
@@ -3040,7 +3043,7 @@ export function ImageToolbar({
         <FolderOpen size={14} />
       </button>
       {variant === 'dock' && onOpenEnlargedSettings ? (
-        <NodeEnlargeButton title="放大编辑设置" onClick={onOpenEnlargedSettings} />
+        <NodeEnlargeButton title="放大编辑提示词" onClick={onOpenEnlargedSettings} />
       ) : null}
     </>
   );
@@ -3092,22 +3095,17 @@ export function ImageToolbar({
         extraActions={extraActions}
       />
 
-      {variant === 'modal' ? (
-        settingsContent
-      ) : (
-        showSettingsPopover &&
-        activePopover === 'params' && (
-          <div
-            className={`toolbar-settings-popover toolbar-settings-popover--${activePopover}`}
-            ref={popoverRef}
-            data-popover={activePopover}
-          >
-            {settingsContent}
-          </div>
-        )
-      )}
+      {showSettingsPopover && activePopover === 'params' ? (
+        <div
+          className="toolbar-settings-popover toolbar-settings-popover--params"
+          ref={popoverRef}
+          data-popover={activePopover}
+        >
+          {settingsContent}
+        </div>
+      ) : null}
 
-      {variant !== 'modal' && activePopover === 'model' ? (
+      {activePopover === 'model' ? (
         <ImageModelPickerPopover
           anchorRef={modelTriggerRef}
           model={model}
@@ -3135,36 +3133,48 @@ export function ImageToolbar({
         </div>
       ) : null}
       <div className="node-bottom-actions image-bottom-actions">
-        {variant !== 'modal' && (
-          <>
-            <button
-              ref={modelTriggerRef}
-              type="button"
-              className={`icon-button settings-trigger-btn ${activePopover === 'model' ? 'active' : ''}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                setActivePopover((prev) => (prev === 'model' ? null : 'model'));
-              }}
-              title="选择模型"
-            >
-              <ModelIcon name={modelIconName} size={14} />
-              <span>{modelLabel}</span>
-              <ChevronDown size={12} />
-            </button>
-            <button
-              type="button"
-              className={`icon-button settings-trigger-btn ${activePopover === 'params' ? 'active' : ''}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                setActivePopover((prev) => (prev === 'params' ? null : 'params'));
-              }}
-              title="参数设置"
-            >
-              <SlidersHorizontal size={14} />
-              <span>{summaryText}</span>
-            </button>
-          </>
-        )}
+        <button
+          ref={modelTriggerRef}
+          type="button"
+          className={`icon-button settings-trigger-btn ${activePopover === 'model' ? 'active' : ''}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            setActivePopover((prev) => (prev === 'model' ? null : 'model'));
+          }}
+          title="选择模型"
+        >
+          <ModelIcon name={modelIconName} size={14} />
+          <span>{modelLabel}</span>
+          <ChevronDown size={12} />
+        </button>
+        <button
+          type="button"
+          className={`icon-button settings-trigger-btn ${activePopover === 'params' ? 'active' : ''}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            setActivePopover((prev) => (prev === 'params' ? null : 'params'));
+          }}
+          title="参数设置"
+        >
+          <SlidersHorizontal size={14} />
+          <span>{summaryText}</span>
+        </button>
+        <GenerationCountControl
+          options={countOptions}
+          value={normalizedSettings.count || 1}
+          unit="张"
+          open={activePopover === 'count'}
+          title="生成数量"
+          menuRef={popoverRef}
+          onToggle={() => setActivePopover((prev) => (prev === 'count' ? null : 'count'))}
+          onChange={(nextCount) => {
+            onUpdateNode(node.id, {
+              imageCount: nextCount,
+              ...patchLayoutForEmptyNode({ imageCount: nextCount }),
+            });
+            setActivePopover(null);
+          }}
+        />
 
         <div className="node-run-actions">
           <button
@@ -3487,6 +3497,8 @@ export function CanvasNode({
   showToolbar = false,
   isRunning,
   isTranslating,
+  isUploading = false,
+  uploadProgress = null,
   textInputLinks = [],
   imageInputLinks = [],
   videoInputLinks = [],
@@ -3788,6 +3800,14 @@ export function CanvasNode({
       </div>
 
       <div className="node-body">
+        <MediaUploadOverlay
+          active={isUploading}
+          variant="inline"
+          label={uploadProgress?.label || '正在上传'}
+          detail={uploadProgress?.detail || ''}
+          current={uploadProgress?.current || 0}
+          total={uploadProgress?.total || 0}
+        />
         {node.type === 'note' ? (
           <NoteBody
             node={node}
@@ -3886,6 +3906,7 @@ export function CanvasNode({
           onUpdateNode={onUpdateNode}
           onOpenEnlargedSettings={onOpenEnlargedSettings}
           onPreviewImage={onPreviewImage}
+          onPreviewVideo={onPreviewVideo}
           pricingList={pricingList}
           userProfile={userProfile}
         />

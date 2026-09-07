@@ -6,7 +6,8 @@ import {
   getChargeList,
   redeemCode,
 } from '../lib/chargeApi';
-import { formatBalanceAmount, parseUserPayment } from '../lib/userApi';
+import { formatJimicoinNumber, parseUserPayment } from '../lib/userApi';
+import JimicoinIcon from './JimicoinIcon';
 import {
   baseCoinFromPrice,
   baseCoinFromUSD,
@@ -479,8 +480,11 @@ export function RechargeModal({ isOpen, onClose, onSuccess, user }) {
 
               <div className="recharge-side-card">
                 <div className="recharge-balance-row">
-                  <span>可用余额</span>
-                  <strong>{formatBalanceAmount(availableBalance)}</strong>
+                  <span>可用吉米币</span>
+                  <strong className="recharge-balance-value">
+                    <JimicoinIcon size={16} />
+                    {formatJimicoinNumber(availableBalance)}
+                  </strong>
                 </div>
                 <p className="recharge-side-label">说明</p>
                 <ul>

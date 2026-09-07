@@ -406,7 +406,11 @@ async function createGrokTask({ token, prompt, settings, referenceImages }) {
 }
 
 async function createMiniMaxH3Task({ token, prompt, settings, referenceImages, veoFrames = {} }) {
-  const images = buildReferenceImageUrls(referenceImages);
+  const firstImage = String(veoFrames.firstFrame || '').trim();
+  const lastImage = String(veoFrames.lastFrame || '').trim();
+  const hasFrames = Boolean(firstImage || lastImage);
+  // 首尾帧与参考图互斥：有首尾帧时不传参考图
+  const images = hasFrames ? [] : buildReferenceImageUrls(referenceImages);
   const ratio = settings.ratio || '16:9';
   const sizeMap = {
     '16:9': '2560x1440',
@@ -416,8 +420,6 @@ async function createMiniMaxH3Task({ token, prompt, settings, referenceImages, v
     '3:4': '1440x1920',
     '21:9': '3360x1440',
   };
-  const firstImage = String(veoFrames.firstFrame || '').trim();
-  const lastImage = String(veoFrames.lastFrame || '').trim();
   const data = await requestJson('/api/video/minimax/h3/videos', {
     token,
     method: 'POST',
@@ -428,8 +430,8 @@ async function createMiniMaxH3Task({ token, prompt, settings, referenceImages, v
       aspect_ratio: ratio,
       size: settings.size || sizeMap[ratio] || '2560x1440',
       reference_images: images.slice(0, 5),
-      first_image: firstImage || undefined,
-      last_image: lastImage || undefined,
+      first_image: hasFrames ? firstImage || undefined : undefined,
+      last_image: hasFrames ? lastImage || undefined : undefined,
     },
   });
 

@@ -5,13 +5,13 @@ import { ImageToolbar, VideoToolbar } from './CanvasNode';
 const NODE_META = {
   image: {
     icon: ImageIcon,
-    title: '图片生成设置',
-    subtitle: '参考图、提示词与模型参数',
+    title: '放大编辑提示词',
+    subtitle: '仅提示词区域放大',
   },
   video: {
     icon: Film,
-    title: '视频生成设置',
-    subtitle: '参考素材、提示词与模型参数',
+    title: '放大编辑提示词',
+    subtitle: '仅提示词区域放大',
   },
 };
 
@@ -36,6 +36,7 @@ export function NodeSettingsModal({
   onRemoveSeedanceMedia,
   onVideoGenerationTypeChange,
   onPreviewImage,
+  onPreviewVideo,
 }) {
   const meta = NODE_META[nodeType] || NODE_META.image;
   const Icon = meta.icon;
@@ -66,6 +67,7 @@ export function NodeSettingsModal({
     onRemoveImageReference,
     onRemoveTextReference,
     onPreviewImage,
+    onPreviewVideo,
   };
 
   return (

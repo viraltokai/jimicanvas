@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { resolveSeedanceMediaPreviewUrl } from '../lib/videoApi';
+import { MediaUploadOverlay } from './MediaUploadOverlay';
 
 const STATUS_LABELS = {
   Active: '已通过',
@@ -23,6 +24,11 @@ export function SeedanceAssetPickerModal({
   assets,
   loading,
   auditing,
+  uploading = false,
+  uploadLabel = '',
+  uploadDetail = '',
+  uploadCurrent = 0,
+  uploadTotal = 0,
   statusFilter = 'Active',
   search,
   selectedAssets,
@@ -129,6 +135,15 @@ export function SeedanceAssetPickerModal({
           />
         </div>
 
+        <MediaUploadOverlay
+          active={uploading || auditing}
+          variant="inline"
+          label={uploadLabel || (auditing ? '正在上传并审核' : '正在上传')}
+          detail={uploadDetail}
+          current={uploadCurrent}
+          total={uploadTotal}
+        />
+
         {notice ? <p className="seedance-asset-notice">{notice}</p> : null}
         <p className="seedance-asset-tip">
           {canSelect
@@ -137,10 +152,10 @@ export function SeedanceAssetPickerModal({
         </p>
 
         <div className="asset-grid seedance-asset-grid">
-          {loading || auditing ? (
+          {loading ? (
             <div className="asset-empty">
               <LoaderCircle size={24} className="spin-icon" />
-              {auditing ? '正在上传并等待审核…' : '正在加载'}
+              正在加载
             </div>
           ) : filteredAssets.length === 0 ? (
             <div className="asset-empty">

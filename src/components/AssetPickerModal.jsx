@@ -3,11 +3,16 @@ import { Check, Film, FolderOpen, Headphones, Image as ImageIcon, LoaderCircle, 
 import { normalizeImageUrl } from '../lib/imageApi';
 import { AUDIO_FILE_ACCEPT, filterAudioFiles, isAudioAssetRecord, normalizeAudioUrl } from '../lib/audioApi';
 import { normalizeVideoUrl, resolveSeedanceMediaPreviewUrl } from '../lib/videoApi';
+import { MediaUploadOverlay } from './MediaUploadOverlay';
 
 export function AssetPickerModal({
   assets,
   loading,
   uploading = false,
+  uploadLabel = '',
+  uploadDetail = '',
+  uploadCurrent = 0,
+  uploadTotal = 0,
   source,
   search,
   selectedAssets,
@@ -154,6 +159,15 @@ export function AssetPickerModal({
             }}
           />
         </div>
+
+        <MediaUploadOverlay
+          active={uploading}
+          variant="inline"
+          label={uploadLabel || '正在上传'}
+          detail={uploadDetail}
+          current={uploadCurrent}
+          total={uploadTotal}
+        />
 
         <div className="asset-grid">
           {loading ? (

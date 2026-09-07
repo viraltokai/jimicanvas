@@ -13,11 +13,11 @@ import {
 } from 'lucide-react';
 import { getNextThemeLabel } from '../lib/theme';
 import {
-  formatBalanceAmount,
+  formatJimicoinNumber,
   getUserDisplayInitial,
   resolveUserAvatarUrl,
 } from '../lib/userApi';
-
+import JimicoinIcon from './JimicoinIcon';
 function resolveMenuUser(user) {
   if (!user) return null;
   const raw = user.profile && typeof user.profile === 'object' ? user.profile : null;
@@ -89,7 +89,7 @@ export function UserAvatarMenu({
   const menuRef = useRef(null);
   const menuUser = resolveMenuUser(user);
   const nickname = menuUser?.nickname || '已登录';
-  const balanceLabel = formatBalanceAmount(menuUser?.remaining);
+  const balanceLabel = formatJimicoinNumber(menuUser?.remaining);
   const isVip = Boolean(menuUser?.isVip);
   const memberLabel = isVip ? 'VIP 会员' : '普通用户';
   const avatarUser = menuUser || user;
@@ -165,7 +165,10 @@ export function UserAvatarMenu({
                 <strong>{nickname}</strong>
                 <span className={`canvas-home-member-badge${isVip ? ' is-vip' : ''}`}>{memberLabel}</span>
               </div>
-              <span>可用余额 {balanceLabel}</span>
+              <span className="canvas-home-user-balance">
+                <JimicoinIcon size={14} className="jimicoin-balance-icon" />
+                {balanceLabel} 吉米币
+              </span>
             </div>
           </div>
           {onInbox ? (

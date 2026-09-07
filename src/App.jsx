@@ -17,6 +17,7 @@ import { ConnectionLayer } from './components/ConnectionLayer';
 import { FloatingDock } from './components/FloatingDock';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { CustomerServiceModal } from './components/CustomerServiceModal';
+import { GlobalChatWidget } from './components/GlobalChatWidget';
 import { InboxModal } from './components/InboxModal';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 import { RechargeModal } from './components/RechargeModal';
@@ -83,6 +84,7 @@ import {
   resolveVideoPrompt,
   resolveAudioPrompt,
   resolveVideoReferenceImages,
+  resolveVideoReferenceVideos,
   resolveVideoGenerationFrames,
   resolveVideoToolbarFrames,
   resolveVideoToolbarReferences,
@@ -290,10 +292,11 @@ function App() {
   const [uploadingNodeId, setUploadingNodeId] = useState(null);
   const [mediaUpload, setMediaUpload] = useState(null);
 
-  function beginMediaUpload({ label = '正在上传', total = 0, detail = '' } = {}) {
+  function beginMediaUpload({ label = '正在上传', total = 0, detail = '', nodeId = null } = {}) {
     setMediaUpload({
       label,
       detail,
+      nodeId: nodeId || null,
       current: 0,
       total: Math.max(0, Number(total) || 0),
     });
@@ -830,7 +833,11 @@ function App() {
 
   useEffect(() => {
     if (!assetPicker.nodeId) return;
-    if (String(assetPicker.pickMode).startsWith('seedance-')) {
+    const isSeedanceLibrary =
+      String(assetPicker.pickMode).startsWith('seedance-') &&
+      assetPicker.pickMode !== 'seedance-ref-video' &&
+      assetPicker.pickMode !== 'seedance-ref-audio';
+    if (isSeedanceLibrary) {
       loadSeedanceAssetPickerAssets(assetPicker.seedanceStatus);
       return;
     }
@@ -2139,6 +2146,7 @@ function App() {
               ...current,
               prompt: resolveVideoPrompt(current, docNodes, docConnections),
               referenceImages: resolveVideoReferenceImages(current, docNodes, docConnections),
+              videoReferenceVideos: resolveVideoReferenceVideos(current, docNodes, docConnections),
               videoFirstFrame: veoFrames.firstFrame,
               videoLastFrame: veoFrames.lastFrame,
             };
@@ -2630,6 +2638,7 @@ function App() {
           ...currentNode,
           prompt: resolveVideoPrompt(currentNode, nodes, connections),
           referenceImages: resolveVideoReferenceImages(currentNode, nodes, connections),
+          videoReferenceVideos: resolveVideoReferenceVideos(currentNode, nodes, connections),
           videoFirstFrame: veoFrames.firstFrame,
           videoLastFrame: veoFrames.lastFrame,
         },
@@ -2824,7 +2833,7 @@ function App() {
       const currentCount = Array.isArray(node?.videoReferenceVideos) ? node.videoReferenceVideos.length : 0;
       return {
         maxCount: Math.max(1, SEEDANCE_REF_VIDEO_MAX - currentCount),
-        title: '满血版素材库',
+        title: '资产库',
         subtitle: `选择参考视频（最多 ${SEEDANCE_REF_VIDEO_MAX} 个）`,
       };
     }
@@ -2832,7 +2841,7 @@ function App() {
       const currentCount = Array.isArray(node?.videoReferenceAudios) ? node.videoReferenceAudios.length : 0;
       return {
         maxCount: Math.max(1, SEEDANCE_REF_AUDIO_MAX - currentCount),
-        title: '满血版素材库',
+        title: '资产库',
         subtitle: `选择参考音频（最多 ${SEEDANCE_REF_AUDIO_MAX} 个）`,
       };
     }
@@ -2966,9 +2975,18 @@ function App() {
   }
 
   function applyPickedAssetsToNode(node, pickMode, pickedAssets, source) {
-    const isVideoOutput = pickMode === 'video-output' || pickMode === 's25-ref-video';
-    const isAudioOutput = pickMode === 'audio-output' || pickMode === 's25-ref-audio';
-    const isSeedancePick = String(pickMode).startsWith('seedance-');
+    const isVideoOutput =
+      pickMode === 'video-output' ||
+      pickMode === 's25-ref-video' ||
+      pickMode === 'seedance-ref-video';
+    const isAudioOutput =
+      pickMode === 'audio-output' ||
+      pickMode === 's25-ref-audio' ||
+      pickMode === 'seedance-ref-audio';
+    const isSeedancePick =
+      String(pickMode).startsWith('seedance-') &&
+      pickMode !== 'seedance-ref-video' &&
+      pickMode !== 'seedance-ref-audio';
     const normalized = isSeedancePick
       ? pickedAssets.map((asset) => {
           const mediaType = pickMode.includes('video')
@@ -3015,8 +3033,6 @@ function App() {
         referenceImages: [...current, ...normalized].slice(0, SEEDANCE_REF_IMAGE_MAX),
         videoFirstFrame: null,
         videoLastFrame: null,
-        videoReferenceVideos: [],
-        videoReferenceAudios: [],
         status: 'idle',
       };
     }
@@ -3146,11 +3162,12 @@ function App() {
     const isVideoOutput = pickMode === 'video-output';
     const isAudioOutput = pickMode === 'audio-output';
 
-    setUploadingNodeId(nodeId);
+    setUploadingNodeId(assetPicker.nodeId === nodeId ? null : nodeId);
     const uploadFiles = isAudioOutput ? filterAudioFiles(files) : files.slice(0, maxCount);
     beginMediaUpload({
       label: isVideoOutput ? '正在上传视频' : isAudioOutput ? '正在上传音频' : '正在上传参考图',
       total: uploadFiles.length,
+      nodeId,
     });
     try {
       const references = [];
@@ -3213,6 +3230,7 @@ function App() {
     beginMediaUpload({
       label: isAudioUpload ? '正在上传音频' : pickMode.includes('video') ? '正在上传视频' : '正在上传到资产库',
       total: queued.length,
+      nodeId: isLibraryBrowse ? null : nodeId,
     });
 
     try {
@@ -3281,7 +3299,11 @@ function App() {
       return;
     }
     const meta = getAssetPickerMeta(node, pickMode);
-    const isSeedanceLibrary = String(pickMode).startsWith('seedance-');
+    // 满血版参考图仍走 Seedance 素材库；参考视频/音频统一走资产库
+    const isSeedanceLibrary =
+      String(pickMode).startsWith('seedance-') &&
+      pickMode !== 'seedance-ref-video' &&
+      pickMode !== 'seedance-ref-audio';
     setAssetPicker({
       nodeId,
       pickMode,
@@ -3507,7 +3529,10 @@ function App() {
       return;
     }
 
-    const isSeedanceLibrary = String(pickMode).startsWith('seedance-');
+    const isSeedanceLibrary =
+      String(pickMode).startsWith('seedance-') &&
+      pickMode !== 'seedance-ref-video' &&
+      pickMode !== 'seedance-ref-audio';
     const mediaType = getAssetPickerMediaType(pickMode);
     const assetSource =
       pickMode === 'video-output' || pickMode === 'audio-output' || isLibraryBrowseMode(pickMode)
@@ -3529,8 +3554,7 @@ function App() {
             source: assetSource,
             page: 1,
             pageSize: 1000,
-            mediaType:
-              mediaType === 'audio' && !isLibraryBrowseMode(pickMode) ? 'image' : mediaType,
+            mediaType,
           });
       setAssetPicker((current) => ({
         ...current,
@@ -3544,11 +3568,18 @@ function App() {
 
   function toggleAssetSelection(asset) {
     setAssetPicker((current) => {
-      if (String(current.pickMode).startsWith('seedance-') && asset.status !== 'Active') {
+      const isSeedanceLibrary =
+        String(current.pickMode).startsWith('seedance-') &&
+        current.pickMode !== 'seedance-ref-video' &&
+        current.pickMode !== 'seedance-ref-audio';
+      if (isSeedanceLibrary && asset.status !== 'Active') {
         return current;
       }
       if (
-        (current.pickMode === 'audio-output' || current.pickMode === 'library-audio') &&
+        (current.pickMode === 'audio-output' ||
+          current.pickMode === 'library-audio' ||
+          current.pickMode === 's25-ref-audio' ||
+          current.pickMode === 'seedance-ref-audio') &&
         !isAudioAssetRecord(asset)
       ) {
         return current;
@@ -3698,7 +3729,7 @@ function App() {
 
     if (value === 'frame') {
       patch.referenceImages = [];
-      if (family === 'seedance') {
+      if (family === 'seedance' || family === 'seedance25gz') {
         patch.videoReferenceVideos = [];
         patch.videoReferenceAudios = [];
       }
@@ -3710,7 +3741,7 @@ function App() {
       patch.referenceImages = [];
       patch.videoFirstFrame = null;
       patch.videoLastFrame = null;
-      if (family === 'seedance') {
+      if (family === 'seedance' || family === 'seedance25gz') {
         patch.videoReferenceVideos = [];
         patch.videoReferenceAudios = [];
       }
@@ -4293,11 +4324,12 @@ function App() {
       {importError ? <div className="toast-error">{importError}</div> : null}
       {copyNotice ? <div className="toast-info toast-copy">{copyNotice}</div> : null}
       <MediaUploadOverlay
-        active={Boolean(mediaUpload)}
+        active={Boolean(mediaUpload) && !uploadingNodeId && !assetPicker.nodeId}
         current={mediaUpload?.current || 0}
         total={mediaUpload?.total || 0}
         label={mediaUpload?.label || '正在上传'}
         detail={mediaUpload?.detail || ''}
+        variant="toast"
       />
       {storageNotice ? (
         <div className="toast-info">
@@ -4346,6 +4378,7 @@ function App() {
           onPreviewImage={(images, index) =>
             openImagePreview(images, index, enlargedSettingsNode.title || '参考图预览')
           }
+          onPreviewVideo={(videoUrl, title) => openVideoPreview(videoUrl, title)}
         />
       ) : null}
 
@@ -4390,6 +4423,8 @@ function App() {
           onClose={() => setShowCustomerService(false)}
         />
       ) : null}
+
+      <GlobalChatWidget onNeedLogin={refreshUserQuota} />
 
       <ConfirmDialog
         open={Boolean(deleteConfirm)}
@@ -4459,11 +4494,18 @@ function App() {
       ) : null}
 
       {assetPicker.nodeId ? (
-        String(assetPicker.pickMode).startsWith('seedance-') ? (
+        String(assetPicker.pickMode).startsWith('seedance-') &&
+        assetPicker.pickMode !== 'seedance-ref-video' &&
+        assetPicker.pickMode !== 'seedance-ref-audio' ? (
           <SeedanceAssetPickerModal
             assets={assetPicker.assets}
             loading={assetPicker.loading}
             auditing={assetPicker.seedanceAuditing}
+            uploading={Boolean(mediaUpload)}
+            uploadLabel={mediaUpload?.label || ''}
+            uploadDetail={mediaUpload?.detail || ''}
+            uploadCurrent={mediaUpload?.current || 0}
+            uploadTotal={mediaUpload?.total || 0}
             statusFilter={assetPicker.seedanceStatus}
             search={assetPicker.search}
             selectedAssets={assetPicker.selectedAssets}
@@ -4491,6 +4533,10 @@ function App() {
             assets={assetPicker.assets}
             loading={assetPicker.loading}
             uploading={Boolean(mediaUpload)}
+            uploadLabel={mediaUpload?.label || ''}
+            uploadDetail={mediaUpload?.detail || ''}
+            uploadCurrent={mediaUpload?.current || 0}
+            uploadTotal={mediaUpload?.total || 0}
             source={assetPicker.source}
             search={assetPicker.search}
             selectedAssets={assetPicker.selectedAssets}
@@ -4632,6 +4678,17 @@ function App() {
                 }
                 isRunning={isNodeActivelyRunning(node, runningNodeId)}
                 isTranslating={translatingNodeId === node.id}
+                isUploading={uploadingNodeId === node.id}
+                uploadProgress={
+                  uploadingNodeId === node.id && mediaUpload
+                    ? {
+                        label: mediaUpload.label,
+                        detail: mediaUpload.detail,
+                        current: mediaUpload.current,
+                        total: mediaUpload.total,
+                      }
+                    : null
+                }
                 textInputLinks={
                   node.type === 'image' || node.type === 'video' || node.type === 'audio'
                     ? getTextInputLinks(node.id, nodes, connections)
@@ -4643,7 +4700,7 @@ function App() {
                     : []
                 }
                 videoInputLinks={
-                  node.type === 'note'
+                  node.type === 'note' || node.type === 'video'
                     ? getVideoInputLinks(node.id, nodes, connections)
                     : []
                 }

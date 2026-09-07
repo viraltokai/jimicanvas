@@ -112,8 +112,15 @@ export function parseUserPayment(payment) {
   };
 }
 
+export function formatJimicoinNumber(amount, decimals = 4) {
+  const n = Math.max(Number(amount) || 0, 0);
+  if (!Number.isFinite(n)) return (0).toFixed(decimals);
+  return n.toFixed(decimals);
+}
+
+/** @deprecated 余额展示请用 formatJimicoinNumber + JimicoinIcon */
 export function formatBalanceAmount(amount) {
-  return `$${Math.max(parseFloat(amount) || 0, 0).toFixed(4)}`;
+  return formatJimicoinNumber(amount);
 }
 
 /** 将接口返回的头像路径转为可访问 URL */

@@ -3,6 +3,7 @@ import { buildImageNodeLayoutPatch, filterRealImageOutputs, isDefaultDemoImageOu
 import { buildVideoNodeLayoutPatch } from './videoNodeLayout';
 import { waitForVideoTask } from './videoApi';
 import { waitForVideoTaskViaSSE } from './videoTaskEvents';
+import { isVideoFrameImageMode, isVideoReferenceImageMode } from './connections';
 
 const RECOVER_STAGGER_MS = 500;
 
@@ -416,25 +417,46 @@ export async function executeVideoGeneration(
         token,
         prompt: promptText,
         settings,
-        referenceImages: node.referenceImages || [],
+        referenceImages: isVideoReferenceImageMode(node) ? node.referenceImages || [] : [],
         veoFrames:
           family === 'veo' || family === 'minimax' || family === 'flux3'
-            ? {
-                firstFrame: node.videoFirstFrame,
-                lastFrame: node.videoLastFrame,
-              }
+            ? isVideoFrameImageMode(node)
+              ? {
+                  firstFrame: node.videoFirstFrame,
+                  lastFrame: node.videoLastFrame,
+                }
+              : {}
             : {},
         seedanceInputs:
           family === 'seedance' || family === 'seedance25' || family === 'seedance25gz' || family === 'wan30'
             ? {
-                firstFrame: family === 'seedance' || family === 'seedance25gz' ? node.videoFirstFrame : undefined,
-                lastFrame: family === 'seedance' || family === 'seedance25gz' ? node.videoLastFrame : undefined,
-                referenceVideos: node.videoReferenceVideos || [],
-                referenceAudios: node.videoReferenceAudios || [],
-                videoRefDuration: (node.videoReferenceVideos || []).reduce(
-                  (sum, item) => sum + (Number(item?.duration) || 0),
-                  0
-                ),
+                firstFrame:
+                  (family === 'seedance' || family === 'seedance25gz') && isVideoFrameImageMode(node)
+                    ? node.videoFirstFrame
+                    : undefined,
+                lastFrame:
+                  (family === 'seedance' || family === 'seedance25gz') && isVideoFrameImageMode(node)
+                    ? node.videoLastFrame
+                    : undefined,
+                referenceVideos:
+                  family === 'seedance' || family === 'seedance25gz'
+                    ? isVideoReferenceImageMode(node)
+                      ? node.videoReferenceVideos || []
+                      : []
+                    : node.videoReferenceVideos || [],
+                referenceAudios:
+                  family === 'seedance' || family === 'seedance25gz'
+                    ? isVideoReferenceImageMode(node)
+                      ? node.videoReferenceAudios || []
+                      : []
+                    : node.videoReferenceAudios || [],
+                videoRefDuration: (
+                  family === 'seedance' || family === 'seedance25gz'
+                    ? isVideoReferenceImageMode(node)
+                      ? node.videoReferenceVideos || []
+                      : []
+                    : node.videoReferenceVideos || []
+                ).reduce((sum, item) => sum + (Number(item?.duration) || 0), 0),
               }
             : {},
       });

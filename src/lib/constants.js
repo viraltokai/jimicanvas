@@ -224,6 +224,10 @@ export const VIDEO_COUNT_OPTIONS = [
   { value: 1, label: '1 次' },
   { value: 2, label: '2 次' },
   { value: 3, label: '3 次' },
+  { value: 4, label: '4 次' },
+  { value: 5, label: '5 次' },
+  { value: 6, label: '6 次' },
+  { value: 7, label: '7 次' },
 ];
 
 export const VIDEO_FAMILY_CONFIG = {
@@ -960,9 +964,9 @@ export function normalizeVideoModelSettings({
   const config = getVideoFamilyConfig(family);
   const effectiveDuration = duration ?? getDefaultVideoDuration(family);
   const normalizedGenerationType =
-    family === 'veo'
+    family === 'veo' || family === 'minimax'
       ? normalizeVeoGenerationType(generationType)
-      : family === 'seedance'
+      : family === 'seedance' || family === 'seedance25gz'
         ? normalizeSeedanceInputMode(generationType)
         : undefined;
   const effectiveOrientation = orientation ?? getDefaultVideoOrientation(family);

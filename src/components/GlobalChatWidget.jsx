@@ -1,0 +1,568 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, ImagePlus, Loader2, Send, Square, Trash2, X } from 'lucide-react';
+import { TEXT_MODEL_OPTIONS } from '../lib/constants';
+import {
+  chatCompletionsStream,
+  getOrRequestToken,
+  getStoredChatToken,
+} from '../lib/chatApi';
+import { uploadAsset } from '../lib/imageApi';
+import {
+  persistPreferredTextModel,
+  resolvePreferredTextModel,
+} from '../lib/textModel';
+import { AnimeAssistantAvatar } from './AnimeAssistantAvatar';
+import './global-chat-widget.css';
+
+const ASSISTANT_NAME = '小咪';
+const STORAGE_KEY = 'global_chat_messages_v1';
+const STORAGE_POS_KEY = 'global_chat_launcher_position_v1';
+const MAX_IMAGES = 5;
+
+function loadMessages() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item) => item && (item.role === 'user' || item.role === 'assistant'));
+  } catch {
+    return [];
+  }
+}
+
+function persistMessages(messages) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-80)));
+  } catch {
+    /* ignore */
+  }
+}
+
+function messageText(content) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .map((part) => {
+      if (typeof part === 'string') return part;
+      if (part?.type === 'text') return part.text || '';
+      return '';
+    })
+    .join('');
+}
+
+function messageImages(content) {
+  if (!Array.isArray(content)) return [];
+  return content
+    .map((part) => (part?.type === 'image_url' ? part.image_url?.url : ''))
+    .filter(Boolean);
+}
+
+function toApiMessages(messages) {
+  return messages
+    .filter((item) => item.role === 'user' || item.role === 'assistant')
+    .map((item) => ({
+      role: item.role,
+      content: item.content,
+    }));
+}
+
+function ChatLauncher({ isOpen, isStreaming, onClick }) {
+  const buttonRef = useRef(null);
+  const [position, setPosition] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const isDraggingRef = useRef(false);
+  const positionRef = useRef(null);
+  const dragStartRef = useRef(null);
+  positionRef.current = position;
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_POS_KEY);
+      if (!saved) return;
+      const parsed = JSON.parse(saved);
+      if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+        setPosition({
+          x: Math.max(0, Math.min(parsed.x, window.innerWidth - 128)),
+          y: Math.max(0, Math.min(parsed.y, window.innerHeight - 128)),
+        });
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    const onResize = () => {
+      if (!positionRef.current || !buttonRef.current) return;
+      const rect = buttonRef.current.getBoundingClientRect();
+      const next = {
+        x: Math.max(0, Math.min(positionRef.current.x, window.innerWidth - rect.width)),
+        y: Math.max(0, Math.min(positionRef.current.y, window.innerHeight - rect.height)),
+      };
+      if (next.x !== positionRef.current.x || next.y !== positionRef.current.y) {
+        setPosition(next);
+        try {
+          localStorage.setItem(STORAGE_POS_KEY, JSON.stringify(next));
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const moveDrag = (clientX, clientY) => {
+    const dragStart = dragStartRef.current;
+    if (!dragStart || !buttonRef.current) return;
+    const dx = clientX - dragStart.startX;
+    const dy = clientY - dragStart.startY;
+    if (!isDraggingRef.current && Math.hypot(dx, dy) > 5) {
+      isDraggingRef.current = true;
+      setIsDragging(true);
+    }
+    if (!isDraggingRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    setPosition({
+      x: Math.max(0, Math.min(dragStart.startLeft + dx, window.innerWidth - rect.width)),
+      y: Math.max(0, Math.min(dragStart.startTop + dy, window.innerHeight - rect.height)),
+    });
+  };
+
+  const endDrag = () => {
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', onMouseUp);
+    document.removeEventListener('touchmove', onTouchMove);
+    document.removeEventListener('touchend', onTouchEnd);
+    if (isDraggingRef.current) {
+      if (positionRef.current) {
+        try {
+          localStorage.setItem(STORAGE_POS_KEY, JSON.stringify(positionRef.current));
+        } catch {
+          /* ignore */
+        }
+      }
+      window.setTimeout(() => {
+        isDraggingRef.current = false;
+        setIsDragging(false);
+      }, 50);
+    } else {
+      dragStartRef.current = null;
+    }
+  };
+
+  const onMouseMove = (event) => moveDrag(event.clientX, event.clientY);
+  const onMouseUp = () => endDrag();
+  const onTouchMove = (event) => {
+    if (event.cancelable) event.preventDefault();
+    const touch = event.touches[0];
+    if (touch) moveDrag(touch.clientX, touch.clientY);
+  };
+  const onTouchEnd = () => endDrag();
+
+  const startDrag = (clientX, clientY) => {
+    if (!buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    dragStartRef.current = {
+      startX: clientX,
+      startY: clientY,
+      startLeft: rect.left,
+      startTop: rect.top,
+    };
+    isDraggingRef.current = false;
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    document.addEventListener('touchmove', onTouchMove, { passive: false });
+    document.addEventListener('touchend', onTouchEnd);
+  };
+
+  useEffect(
+    () => () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.removeEventListener('touchmove', onTouchMove);
+      document.removeEventListener('touchend', onTouchEnd);
+    },
+    []
+  );
+
+  return (
+    <button
+      ref={buttonRef}
+      type="button"
+      className={`xiaomi-launcher${isOpen ? ' is-open' : ''}${isDragging ? ' is-dragging' : ''}${
+        isStreaming ? ' is-streaming' : ''
+      }`}
+      style={
+        position
+          ? { left: position.x, top: position.y, right: 'auto', bottom: 'auto' }
+          : undefined
+      }
+      title={isOpen ? '收起小咪' : '打开小咪助手'}
+      aria-label={isOpen ? '收起小咪' : '打开小咪助手'}
+      onMouseDown={(event) => {
+        if (event.button === 0) startDrag(event.clientX, event.clientY);
+      }}
+      onTouchStart={(event) => {
+        const touch = event.touches[0];
+        if (touch) startDrag(touch.clientX, touch.clientY);
+      }}
+      onClick={(event) => {
+        if (isDraggingRef.current) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        onClick();
+      }}
+    >
+      <span className="xiaomi-launcher-float">
+        <AnimeAssistantAvatar size="xl" isStreaming={isStreaming} isOpen={isOpen} model />
+      </span>
+    </button>
+  );
+}
+
+export function GlobalChatWidget({ onNeedLogin } = {}) {
+  const [open, setOpen] = useState(false);
+  const [input, setInput] = useState('');
+  const [messages, setMessages] = useState(() => loadMessages());
+  const [model, setModel] = useState(() => resolvePreferredTextModel());
+  const [modelOpen, setModelOpen] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [pendingImages, setPendingImages] = useState([]);
+  const [error, setError] = useState('');
+  const listRef = useRef(null);
+  const fileRef = useRef(null);
+  const abortRef = useRef(null);
+  const modelLabel = useMemo(
+    () => TEXT_MODEL_OPTIONS.find((item) => item.value === model)?.label || model,
+    [model]
+  );
+
+  useEffect(() => {
+    persistMessages(messages);
+  }, [messages]);
+
+  useEffect(() => {
+    if (!open || !listRef.current) return;
+    listRef.current.scrollTop = listRef.current.scrollHeight;
+  }, [open, messages, isStreaming]);
+
+  function clearChat() {
+    if (isStreaming) return;
+    setMessages([]);
+    persistMessages([]);
+    setError('');
+  }
+
+  async function handlePickImages(event) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!files.length) return;
+    const room = Math.max(0, MAX_IMAGES - pendingImages.length);
+    const nextFiles = files.slice(0, room);
+    const next = nextFiles.map((file) => ({
+      file,
+      preview: URL.createObjectURL(file),
+    }));
+    setPendingImages((prev) => [...prev, ...next]);
+  }
+
+  function removePendingImage(index) {
+    setPendingImages((prev) => {
+      const copy = [...prev];
+      const [removed] = copy.splice(index, 1);
+      if (removed?.preview?.startsWith('blob:')) {
+        try {
+          URL.revokeObjectURL(removed.preview);
+        } catch {
+          /* ignore */
+        }
+      }
+      return copy;
+    });
+  }
+
+  async function sendMessage() {
+    const text = input.trim();
+    if ((!text && pendingImages.length === 0) || isStreaming) return;
+
+    let token = getStoredChatToken();
+    if (!token) {
+      token = getOrRequestToken({ onSaved: onNeedLogin });
+    }
+    if (!token) {
+      setError('请先登录后再和小咪聊天');
+      onNeedLogin?.();
+      return;
+    }
+
+    setError('');
+    setInput('');
+    setIsStreaming(true);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      const uploadedUrls = [];
+      for (const item of pendingImages) {
+        if (item.url) {
+          uploadedUrls.push(item.url);
+          continue;
+        }
+        if (!item.file) continue;
+        const uploaded = await uploadAsset({ token, file: item.file });
+        if (!uploaded) throw new Error('图片上传失败');
+        uploadedUrls.push(uploaded);
+      }
+
+      pendingImages.forEach((item) => {
+        if (item.preview?.startsWith('blob:')) {
+          try {
+            URL.revokeObjectURL(item.preview);
+          } catch {
+            /* ignore */
+          }
+        }
+      });
+      setPendingImages([]);
+
+      const parts = [];
+      if (text) parts.push({ type: 'text', text });
+      uploadedUrls.forEach((url) => {
+        parts.push({ type: 'image_url', image_url: { url } });
+      });
+      const userContent = parts.length <= 1 && parts[0]?.type === 'text' ? text : parts;
+
+      const userMsg = { role: 'user', content: userContent, createdAt: Date.now() };
+      const assistantMsg = { role: 'assistant', content: '', createdAt: Date.now() };
+      const nextMessages = [...messages, userMsg, assistantMsg];
+      setMessages(nextMessages);
+
+      let assistantContent = '';
+      const updateAssistant = (delta) => {
+        assistantContent += delta;
+        setMessages((prev) => {
+          const copy = [...prev];
+          const last = copy[copy.length - 1];
+          if (last?.role === 'assistant') {
+            copy[copy.length - 1] = { ...last, content: assistantContent };
+          }
+          return copy;
+        });
+      };
+
+      await chatCompletionsStream({
+        token,
+        model,
+        title: text || '图片提问',
+        messages: toApiMessages(nextMessages),
+        signal: controller.signal,
+        onDelta: (delta) => updateAssistant(delta),
+        onError: (err) => {
+          if (err.name === 'AbortError') return;
+          updateAssistant(`${assistantContent ? '\n\n' : ''}（请求失败：${err.message || '未知错误'}）`);
+        },
+      });
+    } catch (err) {
+      if (!(err instanceof Error && err.name === 'AbortError')) {
+        const tip = err instanceof Error ? err.message : '发送失败';
+        setError(tip);
+        setMessages((prev) => {
+          const copy = [...prev];
+          const last = copy[copy.length - 1];
+          if (last?.role === 'assistant' && !String(last.content || '').trim()) {
+            copy[copy.length - 1] = { ...last, content: `（请求失败：${tip}）` };
+          }
+          return copy;
+        });
+      }
+    } finally {
+      setIsStreaming(false);
+      abortRef.current = null;
+    }
+  }
+
+  function stopStreaming() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setIsStreaming(false);
+  }
+
+  return (
+    <>
+      <ChatLauncher
+        isOpen={open}
+        isStreaming={isStreaming}
+        onClick={() => setOpen((prev) => !prev)}
+      />
+
+      {open ? (
+        <section className="xiaomi-panel" role="dialog" aria-label="小咪助手">
+          <header className="xiaomi-panel-head">
+            <div className="xiaomi-panel-brand">
+              <AnimeAssistantAvatar size="sm" isStreaming={isStreaming} />
+              <div>
+                <strong>{ASSISTANT_NAME}</strong>
+                <span>画布助手</span>
+              </div>
+            </div>
+            <div className="xiaomi-panel-actions">
+              <button type="button" title="清空对话" onClick={clearChat} disabled={isStreaming}>
+                <Trash2 size={14} />
+              </button>
+              <button type="button" title="关闭" onClick={() => setOpen(false)}>
+                <X size={14} />
+              </button>
+            </div>
+          </header>
+
+          <div className="xiaomi-panel-messages" ref={listRef}>
+            {messages.length === 0 ? (
+              <div className="xiaomi-empty">
+                <AnimeAssistantAvatar size="lg" isStreaming={isStreaming} />
+                <p>你好，我是小咪。可以问我画布、提示词或创作问题。</p>
+              </div>
+            ) : (
+              messages.map((msg, index) => {
+                const text = messageText(msg.content);
+                const images = messageImages(msg.content);
+                const isUser = msg.role === 'user';
+                return (
+                  <div
+                    key={`${msg.createdAt || index}-${msg.role}`}
+                    className={`xiaomi-msg${isUser ? ' is-user' : ' is-assistant'}`}
+                  >
+                    {!isUser ? (
+                      <AnimeAssistantAvatar
+                        size="sm"
+                        isStreaming={isStreaming && index === messages.length - 1}
+                      />
+                    ) : null}
+                    <div className="xiaomi-msg-bubble">
+                      {images.length ? (
+                        <div className="xiaomi-msg-images">
+                          {images.map((url) => (
+                            <img key={url} src={url} alt="" />
+                          ))}
+                        </div>
+                      ) : null}
+                      {text ? <p>{text}</p> : isStreaming && index === messages.length - 1 ? (
+                        <p className="xiaomi-msg-typing">小咪正在思考…</p>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {error ? <div className="xiaomi-error">{error}</div> : null}
+
+          {pendingImages.length > 0 ? (
+            <div className="xiaomi-pending-images">
+              {pendingImages.map((item, index) => (
+                <div key={item.preview} className="xiaomi-pending-image">
+                  <img src={item.preview} alt="" />
+                  <button type="button" onClick={() => removePendingImage(index)} title="移除">
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          <footer className="xiaomi-panel-footer">
+            <div className="xiaomi-composer-toolbar">
+              <div className="xiaomi-model-picker">
+                <button
+                  type="button"
+                  className="xiaomi-model-trigger"
+                  onClick={() => setModelOpen((prev) => !prev)}
+                  disabled={isStreaming}
+                >
+                  <span>{modelLabel}</span>
+                  <ChevronDown size={12} />
+                </button>
+                {modelOpen ? (
+                  <div className="xiaomi-model-menu">
+                    {TEXT_MODEL_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={option.value === model ? 'is-active' : ''}
+                        onClick={() => {
+                          const next = persistPreferredTextModel(option.value);
+                          setModel(next);
+                          setModelOpen(false);
+                        }}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                className="xiaomi-icon-btn"
+                title="添加图片"
+                disabled={isStreaming || pendingImages.length >= MAX_IMAGES}
+                onClick={() => fileRef.current?.click()}
+              >
+                <ImagePlus size={15} />
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                hidden
+                onChange={handlePickImages}
+              />
+            </div>
+
+            <div className="xiaomi-composer">
+              <textarea
+                value={input}
+                rows={2}
+                placeholder="跟小咪说点什么…"
+                disabled={isStreaming}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    sendMessage();
+                  }
+                }}
+              />
+              {isStreaming ? (
+                <button type="button" className="xiaomi-send is-stop" onClick={stopStreaming} title="停止">
+                  <Square size={14} />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="xiaomi-send"
+                  onClick={sendMessage}
+                  disabled={!input.trim() && pendingImages.length === 0}
+                  title="发送"
+                >
+                  <Send size={14} />
+                </button>
+              )}
+            </div>
+            {isStreaming ? (
+              <div className="xiaomi-streaming-hint">
+                <Loader2 size={12} className="spin-icon" />
+                正在回复…
+              </div>
+            ) : null}
+          </footer>
+        </section>
+      ) : null}
+    </>
+  );
+}
