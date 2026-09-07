@@ -73,7 +73,7 @@ export function FloatingDock({
           <button className="dock-button" onClick={onOpenWorkflowTemplates}>
             <Workflow size={18} />
           </button>
-          <span className="dock-tooltip">工作流模版</span>
+          <span className="dock-tooltip">工作流模版 / 自定义</span>
         </div>
       ) : null}
 

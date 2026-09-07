@@ -1,5 +1,9 @@
 import { createNode, uid } from './canvas';
 import { DEFAULT_CANVAS_BACKGROUND } from './constants';
+import {
+  buildCustomWorkflowFragment,
+  getCustomWorkflow,
+} from './customWorkflows';
 
 const NODE_GAP_X = 340;
 
@@ -138,13 +142,21 @@ export function getWorkflowTemplate(templateId) {
   return WORKFLOW_TEMPLATES.find((item) => item.id === templateId) || null;
 }
 
+export function resolveWorkflowTemplate(templateId) {
+  return getWorkflowTemplate(templateId) || getCustomWorkflow(templateId) || null;
+}
+
 export function getWorkflowTemplateDefaultName(templateId, index = 1) {
-  const template = getWorkflowTemplate(templateId);
+  const template = resolveWorkflowTemplate(templateId);
   if (!template) return `画布 ${index}`;
   return `${template.name} · ${index}`;
 }
 
 export function buildWorkflowTemplateFragment(templateId, originX = 80, originY = 160) {
+  const custom = getCustomWorkflow(templateId);
+  if (custom) {
+    return buildCustomWorkflowFragment(custom, originX, originY);
+  }
   const builder = TEMPLATE_BUILDERS[templateId];
   if (!builder) {
     return { nodes: [], connections: [] };
@@ -153,8 +165,8 @@ export function buildWorkflowTemplateFragment(templateId, originX = 80, originY 
 }
 
 export function createWorkflowTemplateDocument(templateId, name) {
-  const template = getWorkflowTemplate(templateId);
+  const template = resolveWorkflowTemplate(templateId);
   const documentName = name || template?.name || '工作流画布';
-  const { nodes, connections } = buildWorkflowTemplateFragment();
+  const { nodes, connections } = buildWorkflowTemplateFragment(templateId);
   return buildDocument(documentName, nodes, connections);
 }

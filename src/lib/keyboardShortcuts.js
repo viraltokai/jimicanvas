@@ -73,6 +73,16 @@ export const KEYBOARD_SHORTCUT_GROUPS = [
         description: '整体移动框选的节点',
       },
       {
+        id: 'group-frame-drag',
+        keys: ['拖拽组边框空白'],
+        description: '整体移动打组；拖节点可在组内单独调整位置',
+      },
+      {
+        id: 'arrange-group',
+        keys: ['多选工具栏'],
+        description: '对齐、分布、排列与打组',
+      },
+      {
         id: 'copy',
         keys: [formatModKey(), 'C'],
         description: '复制选中节点',

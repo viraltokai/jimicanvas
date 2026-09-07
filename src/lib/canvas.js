@@ -195,6 +195,7 @@ export function createDocument(name, withStarterNodes = true) {
     nodes,
     connections,
     background: DEFAULT_CANVAS_BACKGROUND,
+    backgroundColor: DEFAULT_CANVAS_BACKGROUND_COLOR,
     createdAt: now,
     updatedAt: now,
   };
@@ -281,6 +282,8 @@ export function duplicateNode(source, offsetX = 28, offsetY = 28) {
   delete cloned.pendingTasks;
   delete cloned.generationJob;
   delete cloned.generationBatch;
+  delete cloned.groupId;
+  delete cloned.groupBackground;
 
   return cloned;
 }

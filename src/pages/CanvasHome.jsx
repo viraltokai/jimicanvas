@@ -27,6 +27,11 @@ import { useHomeEntranceAnimation } from '../hooks/useHomeEntranceAnimation';
 import { useTheme } from '../hooks/useTheme';
 import { openCanvasEditor, getJimiaiAppBaseUrl } from '../lib/appNavigation';
 import {
+  readCustomWorkflows,
+  removeCustomWorkflow,
+  syncCustomWorkflowsWithCloud,
+} from '../lib/customWorkflows';
+import {
   deleteCanvasDocument,
   fetchCanvasDocument,
   fetchCanvasList,
@@ -58,7 +63,7 @@ const COPY = {
   startCreateButton: '开始创作',
   tutorialLink: '使用教程',
   workflowTemplatesButton: '工作流模版',
-  workflowTemplatesDesc: '文生图、图生视频、图片/视频反推提示词等常用流程',
+  workflowTemplatesDesc: '预设流程与自定义整组工作流，一键复用',
   createCardDesc: '新建空白画布，开启新的创作',
   createCardAction: '立即创建',
   templateCardDesc: '从常用流程一键起步',
@@ -297,6 +302,7 @@ export function CanvasHome() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [workflowTemplateOpen, setWorkflowTemplateOpen] = useState(false);
+  const [customWorkflows, setCustomWorkflows] = useState(() => readCustomWorkflows());
 
   const recentProjects = useMemo(
     () => projects.slice(0, RECENT_PROJECT_LIMIT),
@@ -474,12 +480,38 @@ export function CanvasHome() {
   };
 
   const handleOpenWorkflowTemplates = () => {
-    requireAuth(() => setWorkflowTemplateOpen(true));
+    requireAuth(() => {
+      const authToken = getStoredChatToken();
+      if (!authToken) {
+        setCustomWorkflows(readCustomWorkflows());
+        setWorkflowTemplateOpen(true);
+        return;
+      }
+      syncCustomWorkflowsWithCloud(authToken)
+        .then((list) => setCustomWorkflows(list))
+        .catch(() => setCustomWorkflows(readCustomWorkflows()))
+        .finally(() => setWorkflowTemplateOpen(true));
+    });
   };
 
   const handleSelectWorkflowTemplate = (templateId) => {
     setWorkflowTemplateOpen(false);
     requireAuth(() => openCanvasEditor({ createNew: true, templateId }));
+  };
+
+  const handleDeleteCustomWorkflow = async (workflowId) => {
+    const target = customWorkflows.find((item) => item.id === workflowId);
+    if (!target) return;
+    if (!window.confirm(`确定删除自定义工作流「${target.name}」？`)) return;
+    try {
+      const authToken = getStoredChatToken();
+      if (!authToken) return;
+      const next = await removeCustomWorkflow(workflowId, authToken);
+      setCustomWorkflows(next);
+    } catch (error) {
+      setCustomWorkflows(readCustomWorkflows());
+      window.alert(error instanceof Error ? error.message : '删除失败');
+    }
   };
 
   const handleOpenProject = (project) => {
@@ -979,6 +1011,8 @@ export function CanvasHome() {
         isOpen={workflowTemplateOpen}
         onClose={() => setWorkflowTemplateOpen(false)}
         onSelect={handleSelectWorkflowTemplate}
+        onDeleteCustom={handleDeleteCustomWorkflow}
+        customTemplates={customWorkflows}
       />
     </div>
   );

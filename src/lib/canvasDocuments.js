@@ -1,5 +1,5 @@
-import { normalizeCanvasBackground } from './canvasBackground';
-import { DEFAULT_CANVAS_BACKGROUND } from './constants';
+import { normalizeCanvasBackground, normalizeCanvasBackgroundColor } from './canvasBackground';
+import { DEFAULT_CANVAS_BACKGROUND, DEFAULT_CANVAS_BACKGROUND_COLOR } from './constants';
 
 function createCanvasUid(prefix = 'id') {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -29,6 +29,7 @@ export function normalizeDocument(doc) {
     nodes: Array.isArray(doc.nodes) ? doc.nodes : [],
     connections: Array.isArray(doc.connections) ? doc.connections : [],
     background: normalizeCanvasBackground(doc.background),
+    backgroundColor: normalizeCanvasBackgroundColor(doc.backgroundColor),
     createdAt: Number(doc.createdAt) || now,
     updatedAt: Number(doc.updatedAt) || now,
   };

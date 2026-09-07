@@ -141,3 +141,37 @@ export function saveCanvasDocumentsKeepalive(token, payload) {
     activeCanvasId: activeId,
   });
 }
+
+function parseWorkflowList(payload) {
+  const raw = payload?.workflows;
+  if (!Array.isArray(raw)) return [];
+  return raw;
+}
+
+/** 获取当前用户自定义工作流列表 */
+export async function fetchCustomWorkflows(token) {
+  const data = await requestCanvas('/api/canvas/workflows', { token, method: 'GET' });
+  return parseWorkflowList(data);
+}
+
+/** 保存单个自定义工作流到云端 */
+export async function saveCustomWorkflowCloud(token, workflow) {
+  if (!workflow?.id) {
+    throw new Error('工作流 ID 无效');
+  }
+  const data = await requestCanvas(`/api/canvas/workflows/${encodeURIComponent(workflow.id)}`, {
+    token,
+    method: 'PUT',
+    body: { workflow },
+  });
+  return parseWorkflowList(data);
+}
+
+/** 删除云端自定义工作流 */
+export async function deleteCustomWorkflowCloud(token, workflowId) {
+  const data = await requestCanvas(`/api/canvas/workflows/${encodeURIComponent(workflowId)}`, {
+    token,
+    method: 'DELETE',
+  });
+  return parseWorkflowList(data);
+}

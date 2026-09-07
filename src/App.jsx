@@ -8,6 +8,7 @@ import { VideoPreviewModal } from './components/VideoPreviewModal';
 import { NodeTypePickerPopover } from './components/NodeTypePickerPopover';
 import { TextEditModal } from './components/TextEditModal';
 import { NodeSettingsModal } from './components/NodeSettingsModal';
+import { SelectionArrangeToolbar } from './components/SelectionArrangeToolbar';
 import { CanvasNode } from './components/CanvasNode';
 import { CanvasZoomControls } from './components/CanvasZoomControls';
 import { CanvasBackgroundPicker } from './components/CanvasBackgroundPicker';
@@ -23,6 +24,7 @@ import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 import { RechargeModal } from './components/RechargeModal';
 import { Topbar } from './components/Topbar';
 import { WorkflowTemplateModal } from './components/WorkflowTemplateModal';
+import { SaveCustomWorkflowModal } from './components/SaveCustomWorkflowModal';
 import { useTheme } from './hooks/useTheme';
 import { usePageLoading } from './lib/global-loading.js';
 import JimicoinIcon from './components/JimicoinIcon';
@@ -93,6 +95,13 @@ import {
   validateNodeConnection,
 } from './lib/connections';
 import { createSpeech, normalizeAudioUrl, filterAudioFiles, isAudioFile, isAudioAssetRecord } from './lib/audioApi';
+import {
+  collectGroupMemberIds,
+  computeNodeArrangement,
+  getAllGroupFrames,
+  getNodesBounds,
+  selectionHasGroupedNodes,
+} from './lib/nodeArrange';
 import {
   applyCanvasVersions,
   deleteCanvasDocument,
@@ -177,6 +186,12 @@ import {
   getWorkflowTemplateDefaultName,
   createWorkflowTemplateDocument,
 } from './lib/workflowTemplates';
+import {
+  readCustomWorkflows,
+  removeCustomWorkflow,
+  saveCustomWorkflowFromSelection,
+  syncCustomWorkflowsWithCloud,
+} from './lib/customWorkflows';
 
 async function extractVideoFrame(videoUrl, position) {
   return new Promise((resolve, reject) => {
@@ -322,6 +337,8 @@ function App() {
   const [showInbox, setShowInbox] = useState(false);
   const [inboxUnread, setInboxUnread] = useState(0);
   const [workflowTemplateOpen, setWorkflowTemplateOpen] = useState(false);
+  const [customWorkflows, setCustomWorkflows] = useState(() => readCustomWorkflows());
+  const [saveWorkflowOpen, setSaveWorkflowOpen] = useState(false);
   const [siteSettings, setSiteSettings] = useState(getDefaultSiteSettings);
   const [assetPicker, setAssetPicker] = useState({
     nodeId: null,
@@ -632,6 +649,13 @@ function App() {
             if (!cancelled) syncCloudVersions(saved);
           }
           if (!cancelled) {
+            try {
+              const workflows = await syncCustomWorkflowsWithCloud(authToken);
+              setCustomWorkflows(workflows);
+            } catch (workflowError) {
+              console.warn('sync custom workflows failed', workflowError);
+              setCustomWorkflows(readCustomWorkflows());
+            }
             setCloudLastSyncedAt(Date.now());
             setCloudSyncStatus('synced');
           }
@@ -1129,6 +1153,58 @@ function App() {
       ...nodes.filter((node) => selectedSet.has(node.id)),
     ];
   }, [nodes, displaySelectedNodeIds]);
+
+  const groupFrames = useMemo(
+    () => getAllGroupFrames(nodes, displaySelectedNodeIds),
+    [nodes, displaySelectedNodeIds]
+  );
+
+  const arrangeToolbarAnchor = useMemo(() => {
+    if (selectionMarquee || displaySelectedNodeIds.length < 2) return null;
+
+    const activeGroup = groupFrames.find((frame) => frame.active);
+    const bounds = activeGroup
+      ? {
+          minX: activeGroup.minX,
+          minY: activeGroup.minY,
+          width: activeGroup.width,
+          height: activeGroup.height,
+        }
+      : (() => {
+          const selectedNodes = nodes.filter((node) =>
+            displaySelectedNodeIds.includes(node.id)
+          );
+          if (selectedNodes.length < 2) return null;
+          const raw = getNodesBounds(selectedNodes);
+          return {
+            minX: raw.minX - 18,
+            minY: raw.minY - 56,
+            width: raw.width + 36,
+            height: raw.height + 74,
+          };
+        })();
+
+    if (!bounds) return null;
+
+    const screenLeft = bounds.minX * canvasScale + viewportOffset.x;
+    const screenTop = bounds.minY * canvasScale + viewportOffset.y;
+    const screenWidth = bounds.width * canvasScale;
+    const centerX = screenLeft + screenWidth / 2;
+    const top = Math.max(8, screenTop - 10);
+
+    return {
+      left: centerX,
+      top,
+    };
+  }, [
+    canvasScale,
+    displaySelectedNodeIds,
+    groupFrames,
+    nodes,
+    selectionMarquee,
+    viewportOffset.x,
+    viewportOffset.y,
+  ]);
   const canvasScalePercent = Math.round(canvasScale * 100);
   const showFocusContentPrompt = useMemo(() => {
     if (nodes.length === 0 || stageSize.width <= 0 || stageSize.height <= 0) return false;
@@ -1439,6 +1515,66 @@ function App() {
     setSelectedConnectionId(null);
     setEnlargedTextEdit(null);
     setWorkflowTemplateOpen(false);
+    const templateName =
+      customWorkflows.find((item) => item.id === templateId)?.name ||
+      templateId;
+    showCopyNotice(`已插入「${templateName}」`);
+  }
+
+  function openSaveSelectedWorkflow() {
+    if (displaySelectedNodeIds.length < 2) {
+      showCopyNotice('请先选择至少 2 个节点', { tone: 'error' });
+      return;
+    }
+    setSaveWorkflowOpen(true);
+  }
+
+  async function confirmSaveSelectedWorkflow(name) {
+    try {
+      const token = getStoredChatToken();
+      if (!token) {
+        showCopyNotice('请先登录后再保存到云端', { tone: 'error' });
+        return;
+      }
+      const selectedIds = collectGroupMemberIds(nodes, displaySelectedNodeIds);
+      const saved = await saveCustomWorkflowFromSelection(
+        {
+          nodes,
+          connections,
+          selectedIds,
+          name,
+        },
+        token
+      );
+      if (!saved) {
+        showCopyNotice('保存失败，请重试', { tone: 'error' });
+        return;
+      }
+      setCustomWorkflows(readCustomWorkflows());
+      setSaveWorkflowOpen(false);
+      showCopyNotice(`已保存到云端「${saved.name}」`);
+    } catch (error) {
+      showCopyNotice(error instanceof Error ? error.message : '保存失败', { tone: 'error' });
+    }
+  }
+
+  async function handleDeleteCustomWorkflow(workflowId) {
+    const target = customWorkflows.find((item) => item.id === workflowId);
+    if (!target) return;
+    if (!window.confirm(`确定删除自定义工作流「${target.name}」？`)) return;
+    try {
+      const token = getStoredChatToken();
+      if (!token) {
+        showCopyNotice('请先登录后再删除', { tone: 'error' });
+        return;
+      }
+      const next = await removeCustomWorkflow(workflowId, token);
+      setCustomWorkflows(next);
+      showCopyNotice('已从云端删除');
+    } catch (error) {
+      setCustomWorkflows(readCustomWorkflows());
+      showCopyNotice(error instanceof Error ? error.message : '删除失败', { tone: 'error' });
+    }
   }
 
   function openEnlargedTextEdit(nodeId, field = 'content') {
@@ -2291,15 +2427,128 @@ function App() {
       if (additive) {
         return prev.includes(nodeId) ? prev.filter((id) => id !== nodeId) : [...prev, nodeId];
       }
+
       if (prev.includes(nodeId) && prev.length > 1) {
         return prev;
       }
-      return [nodeId];
+
+      const groupIds = collectGroupMemberIds(nodes, [nodeId]);
+      return groupIds.length > 1 ? groupIds : [nodeId];
     });
 
     const node = nodes.find((item) => item.id === nodeId);
     if (node?.type !== 'image') {
       setInputHighlightNodeId(null);
+    }
+  }
+
+  function arrangeSelectedNodes(mode) {
+    const selected = nodes.filter((node) => displaySelectedNodeIds.includes(node.id));
+    if (selected.length < 2) return;
+
+    const patches = computeNodeArrangement(selected, mode, { gap: 24 });
+    const patchIds = Object.keys(patches);
+    if (patchIds.length === 0) return;
+
+    updateActiveCanvas((doc) => ({
+      ...doc,
+      nodes: doc.nodes.map((node) => {
+        const patch = patches[node.id];
+        return patch ? { ...node, x: patch.x, y: patch.y } : node;
+      }),
+    }));
+  }
+
+  function groupSelectedNodes() {
+    const selectedIds = displaySelectedNodeIds;
+    if (selectedIds.length < 2) return;
+
+    const groupId = uid('group');
+    const idSet = new Set(selectedIds);
+    updateActiveCanvas((doc) => ({
+      ...doc,
+      nodes: doc.nodes.map((node) => {
+        if (!idSet.has(node.id)) return node;
+        const { groupBackground, ...rest } = node;
+        return { ...rest, groupId };
+      }),
+    }));
+    setSelectedNodeIds(selectedIds);
+    showCopyNotice(`已打组 ${selectedIds.length} 个节点`);
+  }
+
+  function ungroupSelectedNodes() {
+    const selectedIds = displaySelectedNodeIds;
+    if (selectedIds.length === 0) return;
+
+    const idSet = new Set(selectedIds);
+    updateActiveCanvas((doc) => ({
+      ...doc,
+      nodes: doc.nodes.map((node) => {
+        if (!idSet.has(node.id) || !node.groupId) return node;
+        const { groupId, groupBackground, ...rest } = node;
+        return rest;
+      }),
+    }));
+    showCopyNotice('已取消打组');
+  }
+
+  function updateSelectedGroupBackground(color) {
+    const selected = nodes.filter((node) => displaySelectedNodeIds.includes(node.id));
+    const groupIds = new Set(selected.map((node) => node.groupId).filter(Boolean));
+    if (groupIds.size === 0) {
+      showCopyNotice('请先打组后再设置背景色', { tone: 'error' });
+      return;
+    }
+
+    const nextColor = String(color || '').trim();
+    updateActiveCanvas((doc) => ({
+      ...doc,
+      nodes: doc.nodes.map((node) => {
+        if (!node.groupId || !groupIds.has(node.groupId)) return node;
+        if (!nextColor) {
+          const { groupBackground, ...rest } = node;
+          return rest;
+        }
+        return { ...node, groupBackground: nextColor };
+      }),
+    }));
+  }
+
+  async function runSelectedGroupNodes() {
+    const selected = nodes.filter((node) => displaySelectedNodeIds.includes(node.id));
+    const runnable = selected.filter((node) => {
+      if (!['image', 'video', 'audio', 'note'].includes(node.type)) return false;
+      return !isNodeActivelyRunning(node, runningNodeId);
+    });
+
+    if (runnable.length === 0) {
+      showCopyNotice('当前选中没有可执行的节点', { tone: 'error' });
+      return;
+    }
+
+    const token = getOrRequestToken({ onSaved: refreshUserQuota });
+    if (!token) {
+      showCopyNotice('请先登录后再执行', { tone: 'error' });
+      return;
+    }
+
+    showCopyNotice(`正在整组执行 ${runnable.length} 个节点…`);
+
+    const tasks = runnable.map((node) => {
+      if (node.type === 'image') return runImageGenerationActual(node, 'generate');
+      if (node.type === 'video') return runVideoGenerationActual(node, 'generate');
+      if (node.type === 'audio') return runAudioGenerationActual(node, 'generate');
+      if (node.type === 'note') return runTextGeneration(node, 'generate');
+      return Promise.resolve();
+    });
+
+    const results = await Promise.allSettled(tasks);
+    const failed = results.filter((item) => item.status === 'rejected').length;
+    if (failed > 0) {
+      showCopyNotice(`整组执行完成，${failed} 个失败`, { tone: 'error' });
+    } else {
+      showCopyNotice(`已提交整组执行（${runnable.length} 个节点）`);
     }
   }
 
@@ -4011,7 +4260,7 @@ function App() {
     }
   }
 
-  function beginDrag(event, node) {
+  function startNodesDrag(event, nodeIds, { selectionIds = null } = {}) {
     event.preventDefault();
     event.stopPropagation();
     setSelectedConnectionId(null);
@@ -4019,13 +4268,11 @@ function App() {
     marqueeRef.current = null;
     setSelectionMarquee(null);
 
-    const dragNodeIds =
-      selectedNodeIds.includes(node.id) && selectedNodeIds.length > 1
-        ? selectedNodeIds
-        : [node.id];
+    const dragNodeIds = [...new Set((nodeIds || []).filter(Boolean))];
+    if (dragNodeIds.length === 0) return;
 
-    if (!selectedNodeIds.includes(node.id)) {
-      setSelectedNodeIds([node.id]);
+    if (Array.isArray(selectionIds) && selectionIds.length > 0) {
+      setSelectedNodeIds([...new Set(selectionIds)]);
     }
 
     const origins = {};
@@ -4042,6 +4289,36 @@ function App() {
       startY: event.clientY,
       origins,
     };
+
+    try {
+      stageRef.current?.setPointerCapture?.(event.pointerId);
+    } catch {
+      // ignore capture failures from synthetic events
+    }
+  }
+
+  function beginDrag(event, node) {
+    // 组内拖节点：只移动该节点，保持整组选中以便包围框仍在
+    if (node?.groupId) {
+      const groupSelection = collectGroupMemberIds(nodes, [node.id]);
+      startNodesDrag(event, [node.id], { selectionIds: groupSelection });
+      return;
+    }
+
+    const dragNodeIds =
+      selectedNodeIds.includes(node.id) && selectedNodeIds.length > 1
+        ? selectedNodeIds
+        : [node.id];
+
+    const selectionIds = selectedNodeIds.includes(node.id) ? selectedNodeIds : dragNodeIds;
+    startNodesDrag(event, dragNodeIds, { selectionIds });
+  }
+
+  function beginGroupFrameDrag(event, groupId) {
+    if (!groupId || event.button !== 0) return;
+    const memberIds = nodes.filter((item) => item.groupId === groupId).map((item) => item.id);
+    if (memberIds.length < 2) return;
+    startNodesDrag(event, memberIds, { selectionIds: memberIds });
   }
 
   function beginResize(event, node) {
@@ -4335,7 +4612,18 @@ function App() {
         onAddNode={addNode}
         onImport={triggerImport}
         onExport={exportJson}
-        onOpenWorkflowTemplates={() => setWorkflowTemplateOpen(true)}
+        onOpenWorkflowTemplates={() => {
+          const token = getStoredChatToken();
+          if (token) {
+            syncCustomWorkflowsWithCloud(token)
+              .then((list) => setCustomWorkflows(list))
+              .catch(() => setCustomWorkflows(readCustomWorkflows()))
+              .finally(() => setWorkflowTemplateOpen(true));
+            return;
+          }
+          setCustomWorkflows(readCustomWorkflows());
+          setWorkflowTemplateOpen(true);
+        }}
         onUploadMedia={() => directUploadInputRef.current?.click()}
         onOpenMyAssets={() => openMyAssetsLibrary('image')}
       />
@@ -4699,6 +4987,27 @@ function App() {
               />
             ) : null}
 
+            {groupFrames.map((frame) => (
+              <div
+                key={frame.groupId}
+                className={`selection-group-frame${frame.active ? ' is-active' : ''}${
+                  frame.background ? ' has-custom-bg' : ''
+                }`}
+                style={{
+                  left: `${frame.minX}px`,
+                  top: `${frame.minY}px`,
+                  width: `${frame.width}px`,
+                  height: `${frame.height}px`,
+                  ...(frame.background
+                    ? { '--group-frame-tint': frame.background }
+                    : null),
+                }}
+                onPointerDown={(event) => beginGroupFrameDrag(event, frame.groupId)}
+              >
+                <span className="selection-group-frame-label">组 · {frame.count}</span>
+              </div>
+            ))}
+
             {orderedNodes.map((node) => (
               <CanvasNode
                 key={node.id}
@@ -4786,6 +5095,35 @@ function App() {
             ))}
           </div>
 
+          {!selectionMarquee && arrangeToolbarAnchor && displaySelectedNodeIds.length >= 2 ? (
+            <SelectionArrangeToolbar
+              count={displaySelectedNodeIds.length}
+              canUngroup={selectionHasGroupedNodes(nodes, displaySelectedNodeIds)}
+              groupBackground={
+                groupFrames.find((frame) => frame.active)?.background ||
+                nodes.find(
+                  (node) =>
+                    displaySelectedNodeIds.includes(node.id) && node.groupBackground
+                )?.groupBackground ||
+                ''
+              }
+              isRunningGroup={displaySelectedNodeIds.some((id) => {
+                const node = nodes.find((item) => item.id === id);
+                return node ? isNodeActivelyRunning(node, runningNodeId) : false;
+              })}
+              style={{
+                left: `${arrangeToolbarAnchor.left}px`,
+                top: `${arrangeToolbarAnchor.top}px`,
+              }}
+              onArrange={arrangeSelectedNodes}
+              onGroup={groupSelectedNodes}
+              onUngroup={ungroupSelectedNodes}
+              onGroupBackgroundChange={updateSelectedGroupBackground}
+              onSaveWorkflow={openSaveSelectedWorkflow}
+              onRunGroup={runSelectedGroupNodes}
+            />
+          ) : null}
+
           {showFocusContentPrompt ? (
             <FocusContentPrompt nodeCount={nodes.length} onFocus={focusViewportOnContent} />
           ) : null}
@@ -4821,7 +5159,21 @@ function App() {
         isOpen={workflowTemplateOpen}
         onClose={() => setWorkflowTemplateOpen(false)}
         onSelect={insertWorkflowTemplate}
+        onDeleteCustom={handleDeleteCustomWorkflow}
+        customTemplates={customWorkflows}
         mode="insert"
+      />
+
+      <SaveCustomWorkflowModal
+        isOpen={saveWorkflowOpen}
+        nodeCount={displaySelectedNodeIds.length}
+        defaultName={
+          selectionHasGroupedNodes(nodes, displaySelectedNodeIds)
+            ? `组工作流 · ${displaySelectedNodeIds.length} 节点`
+            : `自定义工作流 · ${displaySelectedNodeIds.length} 节点`
+        }
+        onClose={() => setSaveWorkflowOpen(false)}
+        onSave={confirmSaveSelectedWorkflow}
       />
     </div>
   );

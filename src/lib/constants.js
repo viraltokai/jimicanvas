@@ -14,6 +14,8 @@ export const PENDING_CANVAS_ID_KEY = 'jimicanvas.pending_canvas_id';
 export const PENDING_NEW_CANVAS_KEY = 'jimicanvas.pending_new_canvas';
 /** 新建画布时使用的预设工作流模版 ID */
 export const PENDING_WORKFLOW_TEMPLATE_KEY = 'jimicanvas.pending_workflow_template';
+/** 用户保存的自定义工作流（整组复用） */
+export const CUSTOM_WORKFLOWS_STORAGE_KEY = 'jimicanvas.custom_workflows.v1';
 export const DEFAULT_CHAT_API_URL = 'http://localhost:27355';
 export const DEFAULT_SITE_TITLE = 'JimiCanvas';
 export const DEFAULT_SITE_SLOGAN = '轻量画布工作台';
@@ -53,6 +55,30 @@ export const CANVAS_BACKGROUND_OPTIONS = [
   { value: 'grid', label: '网格', hint: '网状参考线' },
   { value: 'line', label: '横线', hint: '水平参考线' },
   { value: 'none', label: '纯色', hint: '无背景纹理' },
+];
+/** 节点组背景色预设（空字符串=默认强调色） */
+export const GROUP_BACKGROUND_PRESETS = [
+  { value: '', label: '默认' },
+  { value: '#38bdf8', label: '天蓝' },
+  { value: '#818cf8', label: '靛蓝' },
+  { value: '#a78bfa', label: '紫罗兰' },
+  { value: '#34d399', label: '翠绿' },
+  { value: '#fbbf24', label: '琥珀' },
+  { value: '#fb7185', label: '玫瑰' },
+  { value: '#94a3b8', label: '石板' },
+  { value: '#f8fafc', label: '浅白' },
+];
+/** 空字符串表示跟随当前主题默认色 */
+export const DEFAULT_CANVAS_BACKGROUND_COLOR = '';
+export const CANVAS_BACKGROUND_COLOR_PRESETS = [
+  { value: '', label: '跟随主题' },
+  { value: '#060606', label: '深黑' },
+  { value: '#0b1220', label: '午夜' },
+  { value: '#111827', label: '石墨' },
+  { value: '#1c1917', label: '暖黑' },
+  { value: '#14532d', label: '墨绿' },
+  { value: '#eef2f7', label: '浅灰' },
+  { value: '#f5f5f4', label: '米白' },
 ];
 export const DEFAULT_VIDEO_URL = 'https://cdn.viralwave.ai/landing/cgt-20260902213126-hpw4m.mp4';
 export const DEFAULT_IMAGE_URL = '/demo/default-handsome-american-man.jpg';
