@@ -25,6 +25,7 @@ import { RechargeModal } from './components/RechargeModal';
 import { Topbar } from './components/Topbar';
 import { WorkflowTemplateModal } from './components/WorkflowTemplateModal';
 import { SaveCustomWorkflowModal } from './components/SaveCustomWorkflowModal';
+import { WorkflowPreviewModal } from './components/WorkflowPreviewModal';
 import { useTheme } from './hooks/useTheme';
 import { usePageLoading } from './lib/global-loading.js';
 import JimicoinIcon from './components/JimicoinIcon';
@@ -105,11 +106,15 @@ import {
 import {
   applyCanvasVersions,
   deleteCanvasDocument,
+  deleteSystemWorkflowCloud,
   fetchCanvasDocuments,
+  fetchSystemWorkflow,
+  fetchSystemWorkflows,
   parseCloudDocuments,
   saveCanvasDocument,
   saveCanvasDocumentKeepalive,
   saveCanvasDocuments,
+  saveSystemWorkflowCloud,
 } from './lib/canvasApi';
 import { getOrRequestToken, getStoredChatToken, runChatCompletion } from './lib/chatApi';
 import { normalizeTextModel } from './lib/textModel';
@@ -161,6 +166,7 @@ import {
   loadInitialState,
   readPendingCanvasId,
   readPendingNewCanvas,
+  readPendingSystemWorkflow,
   readPendingWorkflowTemplate,
   sanitizeDocumentsForPersist,
   writeActiveCanvasId,
@@ -185,13 +191,19 @@ import {
   buildWorkflowTemplateFragment,
   getWorkflowTemplateDefaultName,
   createWorkflowTemplateDocument,
+  createDocumentFromWorkflowFragment,
 } from './lib/workflowTemplates';
 import {
   readCustomWorkflows,
   removeCustomWorkflow,
   saveCustomWorkflowFromSelection,
   syncCustomWorkflowsWithCloud,
+  extractCustomWorkflowFromSelection,
+  buildCustomWorkflowFragment,
+  normalizeCustomWorkflow,
+  suggestWorkflowCoverUrl,
 } from './lib/customWorkflows';
+import { isCanvasAdmin } from './lib/canvasAdmin';
 
 async function extractVideoFrame(videoUrl, position) {
   return new Promise((resolve, reject) => {
@@ -339,6 +351,14 @@ function App() {
   const [workflowTemplateOpen, setWorkflowTemplateOpen] = useState(false);
   const [customWorkflows, setCustomWorkflows] = useState(() => readCustomWorkflows());
   const [saveWorkflowOpen, setSaveWorkflowOpen] = useState(false);
+  const [systemWorkflows, setSystemWorkflows] = useState([]);
+  const [systemWorkflowTotal, setSystemWorkflowTotal] = useState(0);
+  const [systemWorkflowPage, setSystemWorkflowPage] = useState(1);
+  const [systemWorkflowKeyword, setSystemWorkflowKeyword] = useState('');
+  const [systemWorkflowLoading, setSystemWorkflowLoading] = useState(false);
+  const [systemPreview, setSystemPreview] = useState(null);
+  const [systemPreviewAdding, setSystemPreviewAdding] = useState(false);
+  const [saveWorkflowSaving, setSaveWorkflowSaving] = useState(false);
   const [siteSettings, setSiteSettings] = useState(getDefaultSiteSettings);
   const [assetPicker, setAssetPicker] = useState({
     nodeId: null,
@@ -359,6 +379,7 @@ function App() {
   const stageRef = useRef(null);
   const copiedNodeRef = useRef(null);
   const pasteGenerationRef = useRef(0);
+  const systemSearchTimerRef = useRef(null);
   const copyNoticeTimerRef = useRef(null);
   const canvasScaleRef = useRef(canvasScale);
   const viewportOffsetRef = useRef(viewportOffset);
@@ -1353,32 +1374,56 @@ function App() {
     if (!hydrationDone || pendingUrlAppliedRef.current) return undefined;
     pendingUrlAppliedRef.current = true;
 
-    if (readPendingNewCanvas()) {
-      const templateId = readPendingWorkflowTemplate();
-      clearPendingCanvasIntent();
-      const count = documentsRef.current.length + 1;
-      const canvas = templateId
-        ? createWorkflowTemplateDocument(templateId, getWorkflowTemplateDefaultName(templateId, count))
-        : createDocument(`画布 ${count}`, false);
-      setDocuments((prev) => {
-        const next = [canvas, ...prev];
-        writeStorage(next);
-        return next;
-      });
-      setActiveCanvasId(canvas.id);
-      clearSelection();
-      return undefined;
-    }
+    async function applyPendingIntent() {
+      if (readPendingNewCanvas()) {
+        const templateId = readPendingWorkflowTemplate();
+        const systemWorkflowId = readPendingSystemWorkflow();
+        clearPendingCanvasIntent();
+        const count = documentsRef.current.length + 1;
+        let canvas = null;
 
-    const pendingId = readPendingCanvasId();
-    if (pendingId) {
-      clearPendingCanvasIntent();
-      if (documentsRef.current.some((doc) => doc.id === pendingId)) {
-        setActiveCanvasId(pendingId);
+        if (systemWorkflowId) {
+          try {
+            const token = getStoredChatToken();
+            const raw = token ? await fetchSystemWorkflow(token, systemWorkflowId) : null;
+            const workflow = normalizeCustomWorkflow(raw);
+            canvas = workflow
+              ? createDocumentFromWorkflowFragment(workflow, `${workflow.name} · ${count}`)
+              : createDocument(`画布 ${count}`, false);
+          } catch (error) {
+            console.warn('load pending system workflow failed', error);
+            canvas = createDocument(`画布 ${count}`, false);
+          }
+        } else if (templateId) {
+          canvas = createWorkflowTemplateDocument(
+            templateId,
+            getWorkflowTemplateDefaultName(templateId, count)
+          );
+        } else {
+          canvas = createDocument(`画布 ${count}`, false);
+        }
+
+        setDocuments((prev) => {
+          const next = [canvas, ...prev];
+          writeStorage(next);
+          return next;
+        });
+        setActiveCanvasId(canvas.id);
         clearSelection();
+        return;
+      }
+
+      const pendingId = readPendingCanvasId();
+      if (pendingId) {
+        clearPendingCanvasIntent();
+        if (documentsRef.current.some((doc) => doc.id === pendingId)) {
+          setActiveCanvasId(pendingId);
+          clearSelection();
+        }
       }
     }
 
+    applyPendingIntent();
     return undefined;
   }, [hydrationDone]);
 
@@ -1491,7 +1536,7 @@ function App() {
     }
   }
 
-  function insertWorkflowTemplate(templateId) {
+  function insertWorkflowTemplate(templateId, options = {}) {
     const rect = stageRef.current?.getBoundingClientRect();
     const centerX = rect
       ? (rect.width / 2 - viewportOffset.x) / canvasScale - 220
@@ -1499,11 +1544,24 @@ function App() {
     const centerY = rect
       ? (rect.height / 2 - viewportOffset.y) / canvasScale - 120
       : 160;
-    const { nodes, connections } = buildWorkflowTemplateFragment(
-      templateId,
-      centerX + Math.random() * 40 - 20,
-      centerY + Math.random() * 40 - 20
-    );
+    const originX = centerX + Math.random() * 40 - 20;
+    const originY = centerY + Math.random() * 40 - 20;
+
+    let nodes = [];
+    let connections = [];
+    let templateName = templateId;
+
+    if (options.source === 'system' || options.workflow) {
+      const workflow = normalizeCustomWorkflow(options.workflow);
+      if (!workflow) return;
+      ({ nodes, connections } = buildCustomWorkflowFragment(workflow, originX, originY));
+      templateName = workflow.name;
+    } else {
+      ({ nodes, connections } = buildWorkflowTemplateFragment(templateId, originX, originY));
+      templateName =
+        customWorkflows.find((item) => item.id === templateId)?.name || templateId;
+    }
+
     if (!nodes.length) return;
 
     updateActiveCanvas((doc) => ({
@@ -1515,21 +1573,39 @@ function App() {
     setSelectedConnectionId(null);
     setEnlargedTextEdit(null);
     setWorkflowTemplateOpen(false);
-    const templateName =
-      customWorkflows.find((item) => item.id === templateId)?.name ||
-      templateId;
+    setSystemPreview(null);
     showCopyNotice(`已插入「${templateName}」`);
   }
 
-  function openSaveSelectedWorkflow() {
-    if (displaySelectedNodeIds.length < 2) {
-      showCopyNotice('请先选择至少 2 个节点', { tone: 'error' });
+  async function loadSystemWorkflows({ page = 1, keyword = systemWorkflowKeyword } = {}) {
+    const token = getStoredChatToken();
+    if (!token) {
+      setSystemWorkflows([]);
+      setSystemWorkflowTotal(0);
       return;
     }
-    setSaveWorkflowOpen(true);
+    setSystemWorkflowLoading(true);
+    try {
+      const result = await fetchSystemWorkflows(token, {
+        page,
+        pageSize: 6,
+        keyword,
+      });
+      const list = (result.list || []).map(normalizeCustomWorkflow).filter(Boolean);
+      setSystemWorkflows(list);
+      setSystemWorkflowTotal(result.total || list.length);
+      setSystemWorkflowPage(result.page || page);
+      setSystemWorkflowKeyword(keyword);
+    } catch (error) {
+      console.warn('load system workflows failed', error);
+      setSystemWorkflows([]);
+      setSystemWorkflowTotal(0);
+    } finally {
+      setSystemWorkflowLoading(false);
+    }
   }
 
-  async function confirmSaveSelectedWorkflow(name) {
+  async function confirmSaveSelectedWorkflow(name, options = {}) {
     try {
       const token = getStoredChatToken();
       if (!token) {
@@ -1537,6 +1613,41 @@ function App() {
         return;
       }
       const selectedIds = collectGroupMemberIds(nodes, displaySelectedNodeIds);
+      setSaveWorkflowSaving(true);
+
+      if (options.asSystem) {
+        if (!isCanvasAdmin(userQuota.profile)) {
+          showCopyNotice('仅管理员可发布系统工作流', { tone: 'error' });
+          return;
+        }
+
+        let coverUrl = String(options.coverUrl || '').trim();
+        if (options.coverFile) {
+          const uploaded = await uploadAsset({ token, file: options.coverFile });
+          coverUrl = String(uploaded || '').trim();
+          if (!coverUrl) {
+            throw new Error('封面上传失败，请重试');
+          }
+        }
+
+        const workflow = extractCustomWorkflowFromSelection({
+          nodes,
+          connections,
+          selectedIds,
+          name,
+          coverUrl,
+        });
+        if (!workflow) {
+          showCopyNotice('保存失败，请重试', { tone: 'error' });
+          return;
+        }
+        await saveSystemWorkflowCloud(token, workflow, { status: 1 });
+        setSaveWorkflowOpen(false);
+        await loadSystemWorkflows({ page: 1, keyword: '' });
+        showCopyNotice(`已发布系统工作流「${workflow.name}」`);
+        return;
+      }
+
       const saved = await saveCustomWorkflowFromSelection(
         {
           nodes,
@@ -1555,6 +1666,8 @@ function App() {
       showCopyNotice(`已保存到云端「${saved.name}」`);
     } catch (error) {
       showCopyNotice(error instanceof Error ? error.message : '保存失败', { tone: 'error' });
+    } finally {
+      setSaveWorkflowSaving(false);
     }
   }
 
@@ -1575,6 +1688,44 @@ function App() {
       setCustomWorkflows(readCustomWorkflows());
       showCopyNotice(error instanceof Error ? error.message : '删除失败', { tone: 'error' });
     }
+  }
+
+  async function handleDeleteSystemWorkflow(workflowId) {
+    const target =
+      systemWorkflows.find((item) => item.id === workflowId) ||
+      (systemPreview?.id === workflowId ? systemPreview : null);
+    if (!target) return;
+    if (!window.confirm(`确定删除系统工作流「${target.name}」？全站用户将无法再使用。`)) return;
+    try {
+      const token = getStoredChatToken();
+      if (!token || !isCanvasAdmin(userQuota.profile)) {
+        showCopyNotice('仅管理员可删除系统工作流', { tone: 'error' });
+        return;
+      }
+      await deleteSystemWorkflowCloud(token, workflowId);
+      setSystemPreview(null);
+      await loadSystemWorkflows({ page: systemWorkflowPage, keyword: systemWorkflowKeyword });
+      showCopyNotice('已删除系统工作流');
+    } catch (error) {
+      showCopyNotice(error instanceof Error ? error.message : '删除失败', { tone: 'error' });
+    }
+  }
+
+  async function handleAddSystemWorkflow(workflow) {
+    setSystemPreviewAdding(true);
+    try {
+      insertWorkflowTemplate(workflow.id, { source: 'system', workflow });
+    } finally {
+      setSystemPreviewAdding(false);
+    }
+  }
+
+  function openSaveSelectedWorkflow() {
+    if (displaySelectedNodeIds.length < 2) {
+      showCopyNotice('请先选择至少 2 个节点', { tone: 'error' });
+      return;
+    }
+    setSaveWorkflowOpen(true);
   }
 
   function openEnlargedTextEdit(nodeId, field = 'content') {
@@ -4614,15 +4765,18 @@ function App() {
         onExport={exportJson}
         onOpenWorkflowTemplates={() => {
           const token = getStoredChatToken();
+          const openModal = () => setWorkflowTemplateOpen(true);
           if (token) {
-            syncCustomWorkflowsWithCloud(token)
-              .then((list) => setCustomWorkflows(list))
-              .catch(() => setCustomWorkflows(readCustomWorkflows()))
-              .finally(() => setWorkflowTemplateOpen(true));
+            Promise.all([
+              syncCustomWorkflowsWithCloud(token)
+                .then((list) => setCustomWorkflows(list))
+                .catch(() => setCustomWorkflows(readCustomWorkflows())),
+              loadSystemWorkflows({ page: 1, keyword: '' }),
+            ]).finally(openModal);
             return;
           }
           setCustomWorkflows(readCustomWorkflows());
-          setWorkflowTemplateOpen(true);
+          openModal();
         }}
         onUploadMedia={() => directUploadInputRef.current?.click()}
         onOpenMyAssets={() => openMyAssetsLibrary('image')}
@@ -5159,20 +5313,61 @@ function App() {
         isOpen={workflowTemplateOpen}
         onClose={() => setWorkflowTemplateOpen(false)}
         onSelect={insertWorkflowTemplate}
+        onPreviewSystem={(workflow) => {
+          setSystemPreview(workflow);
+          setWorkflowTemplateOpen(false);
+        }}
         onDeleteCustom={handleDeleteCustomWorkflow}
+        onDeleteSystem={handleDeleteSystemWorkflow}
         customTemplates={customWorkflows}
+        systemTemplates={systemWorkflows}
+        systemTotal={systemWorkflowTotal}
+        systemPage={systemWorkflowPage}
+        systemLoading={systemWorkflowLoading}
+        onSystemSearch={(keyword) => {
+          setSystemWorkflowKeyword(keyword);
+          if (systemSearchTimerRef.current) {
+            window.clearTimeout(systemSearchTimerRef.current);
+          }
+          systemSearchTimerRef.current = window.setTimeout(() => {
+            loadSystemWorkflows({ page: 1, keyword });
+          }, 280);
+        }}
+        onSystemPageChange={(page) => {
+          loadSystemWorkflows({ page, keyword: systemWorkflowKeyword });
+        }}
+        canManageSystem={isCanvasAdmin(userQuota.profile)}
         mode="insert"
+      />
+
+      <WorkflowPreviewModal
+        isOpen={Boolean(systemPreview)}
+        workflow={systemPreview}
+        adding={systemPreviewAdding}
+        canDelete={isCanvasAdmin(userQuota.profile)}
+        onClose={() => setSystemPreview(null)}
+        onAdd={handleAddSystemWorkflow}
+        onDelete={handleDeleteSystemWorkflow}
       />
 
       <SaveCustomWorkflowModal
         isOpen={saveWorkflowOpen}
         nodeCount={displaySelectedNodeIds.length}
+        canSaveAsSystem={isCanvasAdmin(userQuota.profile)}
+        suggestedCoverUrl={suggestWorkflowCoverUrl(
+          nodes,
+          collectGroupMemberIds(nodes, displaySelectedNodeIds)
+        )}
+        saving={saveWorkflowSaving}
         defaultName={
           selectionHasGroupedNodes(nodes, displaySelectedNodeIds)
             ? `组工作流 · ${displaySelectedNodeIds.length} 节点`
             : `自定义工作流 · ${displaySelectedNodeIds.length} 节点`
         }
-        onClose={() => setSaveWorkflowOpen(false)}
+        onClose={() => {
+          if (saveWorkflowSaving) return;
+          setSaveWorkflowOpen(false);
+        }}
         onSave={confirmSaveSelectedWorkflow}
       />
     </div>

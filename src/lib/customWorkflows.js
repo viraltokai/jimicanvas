@@ -82,6 +82,12 @@ export function normalizeCustomWorkflow(raw) {
         ? raw.description.trim()
         : summarizeNodes(nodes),
     icon: typeof raw.icon === 'string' && raw.icon.trim() ? raw.icon.trim() : pickWorkflowIcon(nodes),
+    coverUrl:
+      typeof raw.coverUrl === 'string'
+        ? String(raw.coverUrl).trim()
+        : typeof raw.cover_url === 'string'
+          ? String(raw.cover_url).trim()
+          : '',
     groupBackground:
       typeof raw.groupBackground === 'string' ? String(raw.groupBackground).trim() : '',
     nodes,
@@ -238,6 +244,26 @@ export async function removeCustomWorkflow(workflowId, token) {
   }
 }
 
+export function suggestWorkflowCoverUrl(nodes = [], selectedIds = null) {
+  const idSet = selectedIds ? new Set(selectedIds) : null;
+  const list = idSet ? nodes.filter((node) => idSet.has(node.id)) : nodes;
+  for (const node of list) {
+    if (node?.type !== 'image') continue;
+    const candidates = [
+      ...(Array.isArray(node.images) ? node.images : []),
+      node.content,
+    ];
+    for (const item of candidates) {
+      const url = String(item || '').trim();
+      if (!url) continue;
+      if (url.startsWith('data:image') || /^https?:\/\//i.test(url) || url.startsWith('/')) {
+        return url;
+      }
+    }
+  }
+  return '';
+}
+
 /**
  * 从当前画布选中/组内节点提取可复用工作流片段（相对坐标）。
  */
@@ -247,6 +273,7 @@ export function extractCustomWorkflowFromSelection({
   selectedIds = [],
   name,
   description,
+  coverUrl,
 } = {}) {
   const idSet = new Set(selectedIds);
   const members = nodes.filter((node) => idSet.has(node.id));
@@ -285,6 +312,11 @@ export function extractCustomWorkflowFromSelection({
       ? name.trim()
       : `自定义工作流 · ${templateNodes.length} 节点`;
 
+  const resolvedCover =
+    typeof coverUrl === 'string' && coverUrl.trim()
+      ? coverUrl.trim()
+      : suggestWorkflowCoverUrl(members);
+
   return normalizeCustomWorkflow({
     id: uid('workflow'),
     name: workflowName,
@@ -293,6 +325,7 @@ export function extractCustomWorkflowFromSelection({
         ? description.trim()
         : summarizeNodes(templateNodes),
     icon: pickWorkflowIcon(templateNodes),
+    coverUrl: resolvedCover,
     groupBackground: String(groupBackground || '').trim(),
     nodes: templateNodes,
     connections: templateConnections,

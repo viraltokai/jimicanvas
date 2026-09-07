@@ -175,3 +175,60 @@ export async function deleteCustomWorkflowCloud(token, workflowId) {
   });
   return parseWorkflowList(data);
 }
+
+function parseSystemWorkflowList(payload) {
+  return {
+    list: Array.isArray(payload?.list) ? payload.list : [],
+    total: Number(payload?.total) || 0,
+    page: Number(payload?.page) || 1,
+    pageSize: Number(payload?.page_size) || Number(payload?.pageSize) || 20,
+  };
+}
+
+/** 系统工作流列表（已上架） */
+export async function fetchSystemWorkflows(token, { keyword = '', page = 1, pageSize = 20 } = {}) {
+  const params = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+  });
+  if (keyword) params.set('keyword', keyword);
+  const data = await requestCanvas(`/api/canvas/system-workflows?${params.toString()}`, {
+    token,
+    method: 'GET',
+  });
+  return parseSystemWorkflowList(data);
+}
+
+/** 系统工作流详情 */
+export async function fetchSystemWorkflow(token, workflowId) {
+  const data = await requestCanvas(`/api/canvas/system-workflows/${encodeURIComponent(workflowId)}`, {
+    token,
+    method: 'GET',
+  });
+  return data?.workflow || null;
+}
+
+/** 管理员保存系统工作流 */
+export async function saveSystemWorkflowCloud(token, workflow, { sortOrder = 0, status = 1 } = {}) {
+  if (!workflow?.id) {
+    throw new Error('工作流 ID 无效');
+  }
+  const data = await requestCanvas(`/api/canvas/system-workflows/${encodeURIComponent(workflow.id)}`, {
+    token,
+    method: 'PUT',
+    body: {
+      workflow,
+      sort_order: Number(sortOrder) || 0,
+      status: Number(status) === 0 ? 0 : 1,
+    },
+  });
+  return data?.workflow || workflow;
+}
+
+/** 管理员删除系统工作流 */
+export async function deleteSystemWorkflowCloud(token, workflowId) {
+  return requestCanvas(`/api/canvas/system-workflows/${encodeURIComponent(workflowId)}`, {
+    token,
+    method: 'DELETE',
+  });
+}

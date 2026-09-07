@@ -170,3 +170,9 @@ export function createWorkflowTemplateDocument(templateId, name) {
   const { nodes, connections } = buildWorkflowTemplateFragment(templateId);
   return buildDocument(documentName, nodes, connections);
 }
+
+export function createDocumentFromWorkflowFragment(workflow, name) {
+  const documentName = name || workflow?.name || '系统工作流';
+  const { nodes, connections } = buildCustomWorkflowFragment(workflow, 80, 160);
+  return buildDocument(documentName, nodes, connections);
+}

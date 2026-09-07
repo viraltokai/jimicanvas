@@ -14,6 +14,8 @@ export const PENDING_CANVAS_ID_KEY = 'jimicanvas.pending_canvas_id';
 export const PENDING_NEW_CANVAS_KEY = 'jimicanvas.pending_new_canvas';
 /** 新建画布时使用的预设工作流模版 ID */
 export const PENDING_WORKFLOW_TEMPLATE_KEY = 'jimicanvas.pending_workflow_template';
+/** 新建画布时使用的系统工作流 ID */
+export const PENDING_SYSTEM_WORKFLOW_KEY = 'jimicanvas.pending_system_workflow';
 /** 用户保存的自定义工作流（整组复用） */
 export const CUSTOM_WORKFLOWS_STORAGE_KEY = 'jimicanvas.custom_workflows.v1';
 export const DEFAULT_CHAT_API_URL = 'http://localhost:27355';

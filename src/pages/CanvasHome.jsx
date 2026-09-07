@@ -20,6 +20,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { RechargeModal } from '../components/RechargeModal';
 import { InboxModal } from '../components/InboxModal';
 import { WorkflowTemplateModal } from '../components/WorkflowTemplateModal';
+import { WorkflowPreviewModal } from '../components/WorkflowPreviewModal';
 import { SiteLogo } from '../components/SiteLogo';
 import { CanvasHomeBackground } from '../components/CanvasHomeBackground';
 import { UserAvatarMenu } from '../components/UserAvatarMenu';
@@ -30,11 +31,15 @@ import {
   readCustomWorkflows,
   removeCustomWorkflow,
   syncCustomWorkflowsWithCloud,
+  normalizeCustomWorkflow,
 } from '../lib/customWorkflows';
+import { isCanvasAdmin } from '../lib/canvasAdmin';
 import {
   deleteCanvasDocument,
+  deleteSystemWorkflowCloud,
   fetchCanvasDocument,
   fetchCanvasList,
+  fetchSystemWorkflows,
   saveCanvasDocument,
 } from '../lib/canvasApi';
 import {
@@ -63,7 +68,7 @@ const COPY = {
   startCreateButton: '开始创作',
   tutorialLink: '使用教程',
   workflowTemplatesButton: '工作流模版',
-  workflowTemplatesDesc: '预设流程与自定义整组工作流，一键复用',
+  workflowTemplatesDesc: '预设、系统与自定义工作流，预览后一键复用',
   createCardDesc: '新建空白画布，开启新的创作',
   createCardAction: '立即创建',
   templateCardDesc: '从常用流程一键起步',
@@ -303,6 +308,13 @@ export function CanvasHome() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [workflowTemplateOpen, setWorkflowTemplateOpen] = useState(false);
   const [customWorkflows, setCustomWorkflows] = useState(() => readCustomWorkflows());
+  const [systemWorkflows, setSystemWorkflows] = useState([]);
+  const [systemWorkflowTotal, setSystemWorkflowTotal] = useState(0);
+  const [systemWorkflowPage, setSystemWorkflowPage] = useState(1);
+  const [systemWorkflowKeyword, setSystemWorkflowKeyword] = useState('');
+  const [systemWorkflowLoading, setSystemWorkflowLoading] = useState(false);
+  const [systemPreview, setSystemPreview] = useState(null);
+  const [userRolesProfile, setUserRolesProfile] = useState(null);
 
   const recentProjects = useMemo(
     () => projects.slice(0, RECENT_PROJECT_LIMIT),
@@ -487,16 +499,61 @@ export function CanvasHome() {
         setWorkflowTemplateOpen(true);
         return;
       }
-      syncCustomWorkflowsWithCloud(authToken)
-        .then((list) => setCustomWorkflows(list))
-        .catch(() => setCustomWorkflows(readCustomWorkflows()))
-        .finally(() => setWorkflowTemplateOpen(true));
+      setSystemWorkflowLoading(true);
+      Promise.all([
+        syncCustomWorkflowsWithCloud(authToken)
+          .then((list) => setCustomWorkflows(list))
+          .catch(() => setCustomWorkflows(readCustomWorkflows())),
+        fetchSystemWorkflows(authToken, { page: 1, pageSize: 6, keyword: '' })
+          .then((result) => {
+            const list = (result.list || []).map(normalizeCustomWorkflow).filter(Boolean);
+            setSystemWorkflows(list);
+            setSystemWorkflowTotal(result.total || list.length);
+            setSystemWorkflowPage(result.page || 1);
+            setSystemWorkflowKeyword('');
+          })
+          .catch(() => {
+            setSystemWorkflows([]);
+            setSystemWorkflowTotal(0);
+          }),
+        fetchUserInfo(authToken)
+          .then((info) => setUserRolesProfile(info))
+          .catch(() => setUserRolesProfile(null)),
+      ]).finally(() => {
+        setSystemWorkflowLoading(false);
+        setWorkflowTemplateOpen(true);
+      });
     });
   };
 
-  const handleSelectWorkflowTemplate = (templateId) => {
+  const handleSelectWorkflowTemplate = (templateId, options = {}) => {
     setWorkflowTemplateOpen(false);
-    requireAuth(() => openCanvasEditor({ createNew: true, templateId }));
+    requireAuth(() => {
+      if (options.source === 'system') {
+        openCanvasEditor({ createNew: true, systemWorkflowId: templateId });
+        return;
+      }
+      openCanvasEditor({ createNew: true, templateId });
+    });
+  };
+
+  const loadHomeSystemWorkflows = async ({ page = 1, keyword = '' } = {}) => {
+    const authToken = getStoredChatToken();
+    if (!authToken) return;
+    setSystemWorkflowLoading(true);
+    try {
+      const result = await fetchSystemWorkflows(authToken, { page, pageSize: 6, keyword });
+      const list = (result.list || []).map(normalizeCustomWorkflow).filter(Boolean);
+      setSystemWorkflows(list);
+      setSystemWorkflowTotal(result.total || list.length);
+      setSystemWorkflowPage(result.page || page);
+      setSystemWorkflowKeyword(keyword);
+    } catch {
+      setSystemWorkflows([]);
+      setSystemWorkflowTotal(0);
+    } finally {
+      setSystemWorkflowLoading(false);
+    }
   };
 
   const handleDeleteCustomWorkflow = async (workflowId) => {
@@ -510,6 +567,20 @@ export function CanvasHome() {
       setCustomWorkflows(next);
     } catch (error) {
       setCustomWorkflows(readCustomWorkflows());
+      window.alert(error instanceof Error ? error.message : '删除失败');
+    }
+  };
+
+  const handleDeleteSystemWorkflow = async (workflowId) => {
+    const target = systemWorkflows.find((item) => item.id === workflowId);
+    if (!target) return;
+    if (!window.confirm(`确定删除系统工作流「${target.name}」？`)) return;
+    try {
+      const authToken = getStoredChatToken();
+      if (!authToken || !isCanvasAdmin(userRolesProfile)) return;
+      await deleteSystemWorkflowCloud(authToken, workflowId);
+      await loadHomeSystemWorkflows({ page: systemWorkflowPage, keyword: systemWorkflowKeyword });
+    } catch (error) {
       window.alert(error instanceof Error ? error.message : '删除失败');
     }
   };
@@ -1011,8 +1082,38 @@ export function CanvasHome() {
         isOpen={workflowTemplateOpen}
         onClose={() => setWorkflowTemplateOpen(false)}
         onSelect={handleSelectWorkflowTemplate}
+        onPreviewSystem={(workflow) => {
+          setSystemPreview(workflow);
+          setWorkflowTemplateOpen(false);
+        }}
         onDeleteCustom={handleDeleteCustomWorkflow}
+        onDeleteSystem={handleDeleteSystemWorkflow}
         customTemplates={customWorkflows}
+        systemTemplates={systemWorkflows}
+        systemTotal={systemWorkflowTotal}
+        systemPage={systemWorkflowPage}
+        systemLoading={systemWorkflowLoading}
+        onSystemSearch={(keyword) => loadHomeSystemWorkflows({ page: 1, keyword })}
+        onSystemPageChange={(page) =>
+          loadHomeSystemWorkflows({ page, keyword: systemWorkflowKeyword })
+        }
+        canManageSystem={isCanvasAdmin(userRolesProfile)}
+      />
+
+      <WorkflowPreviewModal
+        isOpen={Boolean(systemPreview)}
+        workflow={systemPreview}
+        canDelete={isCanvasAdmin(userRolesProfile)}
+        addLabel="用此创建画布"
+        onClose={() => setSystemPreview(null)}
+        onAdd={(workflow) => {
+          setSystemPreview(null);
+          requireAuth(() => openCanvasEditor({ createNew: true, systemWorkflowId: workflow.id }));
+        }}
+        onDelete={async (workflowId) => {
+          await handleDeleteSystemWorkflow(workflowId);
+          setSystemPreview(null);
+        }}
       />
     </div>
   );

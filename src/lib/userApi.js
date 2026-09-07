@@ -185,8 +185,10 @@ export async function fetchUserInfo(token) {
   const payment = parseUserPayment(data.payment);
   const nickname = data.nickname || data.email || '';
   return {
+    id: data.id,
     nickname,
     avatarUrl: resolveUserAvatarUrl(data.avatar_url || data.avatar || ''),
+    roles: Array.isArray(data.roles) ? data.roles : [],
     ...parseVipInfo(data.vip_info),
     ...payment,
     profile: data,

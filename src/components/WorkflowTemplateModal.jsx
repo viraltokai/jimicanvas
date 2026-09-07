@@ -4,12 +4,14 @@ import {
   ChevronLeft,
   ChevronRight,
   Clapperboard,
+  Eye,
   FileText,
   Film,
   Image as ImageIcon,
   Layers,
   ScanSearch,
   Search,
+  Sparkles,
   Trash2,
   X,
 } from 'lucide-react';
@@ -22,9 +24,11 @@ const TEMPLATE_ICONS = {
   'video-scan': Clapperboard,
   layers: Layers,
   note: FileText,
+  system: Sparkles,
 };
 
 const CUSTOM_PAGE_SIZE = 6;
+const SYSTEM_PAGE_SIZE = 6;
 
 function matchesWorkflowSearch(template, query) {
   if (!query) return true;
@@ -36,19 +40,30 @@ export function WorkflowTemplateModal({
   isOpen,
   onClose,
   onSelect,
+  onPreviewSystem,
   onDeleteCustom,
+  onDeleteSystem,
   customTemplates = [],
+  systemTemplates = [],
+  systemTotal = 0,
+  systemPage = 1,
+  systemLoading = false,
+  onSystemSearch,
+  onSystemPageChange,
+  canManageSystem = false,
   mode = 'create',
 }) {
   const [activeTab, setActiveTab] = useState('preset');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [systemKeyword, setSystemKeyword] = useState('');
 
   useEffect(() => {
     if (!isOpen) return undefined;
-    setActiveTab(customTemplates.length > 0 ? 'custom' : 'preset');
+    setActiveTab(systemTemplates.length > 0 ? 'system' : customTemplates.length > 0 ? 'custom' : 'preset');
     setSearch('');
     setPage(1);
+    setSystemKeyword('');
     return undefined;
   }, [isOpen]);
 
@@ -68,13 +83,15 @@ export function WorkflowTemplateModal({
     return filteredCustom.slice(start, start + CUSTOM_PAGE_SIZE);
   }, [filteredCustom, currentPage]);
 
+  const systemTotalPages = Math.max(1, Math.ceil((systemTotal || systemTemplates.length) / SYSTEM_PAGE_SIZE));
+
   if (!isOpen) return null;
 
   const title = mode === 'insert' ? '插入工作流模版' : '工作流模版';
   const subtitle =
     mode === 'insert'
-      ? '选择预设或自定义工作流，一键插入当前画布'
-      : '选择预设或自定义工作流，快速搭建创作流程';
+      ? '选择预设、系统或自定义工作流，一键插入当前画布'
+      : '选择预设、系统或自定义工作流，快速搭建创作流程';
 
   return (
     <div className="asset-modal-backdrop" onPointerDown={onClose}>
@@ -109,11 +126,21 @@ export function WorkflowTemplateModal({
           <button
             type="button"
             role="tab"
+            aria-selected={activeTab === 'system'}
+            className={`workflow-template-tab${activeTab === 'system' ? ' is-active' : ''}`}
+            onClick={() => setActiveTab('system')}
+          >
+            系统工作流
+            <span className="workflow-template-tab-count">{systemTotal || systemTemplates.length}</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
             aria-selected={activeTab === 'custom'}
             className={`workflow-template-tab${activeTab === 'custom' ? ' is-active' : ''}`}
             onClick={() => setActiveTab('custom')}
           >
-            自定义工作流
+            自定义
             <span className="workflow-template-tab-count">{customTemplates.length}</span>
           </button>
         </div>
@@ -129,7 +156,7 @@ export function WorkflowTemplateModal({
                       key={template.id}
                       type="button"
                       className="workflow-template-card"
-                      onClick={() => onSelect(template.id)}
+                      onClick={() => onSelect(template.id, { source: 'preset' })}
                     >
                       <span className={`workflow-template-icon icon-${template.icon}`}>
                         <Icon size={22} aria-hidden="true" />
@@ -143,7 +170,122 @@ export function WorkflowTemplateModal({
                 })}
               </div>
             </section>
-          ) : (
+          ) : null}
+
+          {activeTab === 'system' ? (
+            <section className="workflow-template-section" aria-label="系统工作流" role="tabpanel">
+              <div className="workflow-template-toolbar">
+                <label className="workflow-template-search">
+                  <Search size={15} aria-hidden="true" />
+                  <input
+                    type="search"
+                    value={systemKeyword}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setSystemKeyword(value);
+                      onSystemSearch?.(value);
+                    }}
+                    placeholder="搜索系统工作流"
+                    aria-label="搜索系统工作流"
+                  />
+                </label>
+                <span className="workflow-template-result-count">
+                  {systemTotal || systemTemplates.length}
+                </span>
+              </div>
+
+              {systemLoading ? (
+                <p className="workflow-template-empty">加载系统工作流中…</p>
+              ) : systemTemplates.length === 0 ? (
+                <p className="workflow-template-empty">
+                  暂无系统工作流。管理员可在画布中选中一组节点后「存为系统工作流」。
+                </p>
+              ) : (
+                <>
+                  <div className="workflow-template-grid">
+                    {systemTemplates.map((template) => {
+                      const Icon = TEMPLATE_ICONS[template.icon] || Sparkles;
+                      return (
+                        <div key={template.id} className="workflow-template-card-wrap">
+                          <button
+                            type="button"
+                            className={`workflow-template-card is-custom${
+                              template.coverUrl ? ' has-cover' : ''
+                            }`}
+                            onClick={() =>
+                              onPreviewSystem
+                                ? onPreviewSystem(template)
+                                : onSelect(template.id, { source: 'system', workflow: template })
+                            }
+                          >
+                            {template.coverUrl ? (
+                              <span className="workflow-template-cover">
+                                <img src={template.coverUrl} alt="" />
+                              </span>
+                            ) : (
+                              <span className={`workflow-template-icon icon-${template.icon || 'layers'}`}>
+                                <Icon size={22} aria-hidden="true" />
+                              </span>
+                            )}
+                            <span className="workflow-template-card-body">
+                              <strong>{template.name}</strong>
+                              <span>{template.description}</span>
+                            </span>
+                            <span className="workflow-template-card-action">
+                              <Eye size={14} />
+                              预览
+                            </span>
+                          </button>
+                          {canManageSystem && onDeleteSystem ? (
+                            <button
+                              type="button"
+                              className="workflow-template-delete"
+                              title="删除系统工作流"
+                              aria-label={`删除 ${template.name}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onDeleteSystem(template.id);
+                              }}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {systemTotalPages > 1 ? (
+                    <div className="workflow-template-pagination">
+                      <button
+                        type="button"
+                        className="workflow-template-page-btn"
+                        disabled={systemPage <= 1 || systemLoading}
+                        onClick={() => onSystemPageChange?.(Math.max(1, systemPage - 1))}
+                        aria-label="上一页"
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+                      <span className="workflow-template-page-info">
+                        {systemPage} / {systemTotalPages}
+                      </span>
+                      <button
+                        type="button"
+                        className="workflow-template-page-btn"
+                        disabled={systemPage >= systemTotalPages || systemLoading}
+                        onClick={() => onSystemPageChange?.(Math.min(systemTotalPages, systemPage + 1))}
+                        aria-label="下一页"
+                      >
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </section>
+          ) : null}
+
+          {activeTab === 'custom' ? (
             <section className="workflow-template-section" aria-label="自定义工作流" role="tabpanel">
               <div className="workflow-template-toolbar">
                 <label className="workflow-template-search">
@@ -177,11 +319,9 @@ export function WorkflowTemplateModal({
                           <button
                             type="button"
                             className="workflow-template-card is-custom"
-                            onClick={() => onSelect(template.id)}
+                            onClick={() => onSelect(template.id, { source: 'custom', workflow: template })}
                           >
-                            <span
-                              className={`workflow-template-icon icon-${template.icon || 'layers'}`}
-                            >
+                            <span className={`workflow-template-icon icon-${template.icon || 'layers'}`}>
                               <Icon size={22} aria-hidden="true" />
                             </span>
                             <span className="workflow-template-card-body">
@@ -236,7 +376,7 @@ export function WorkflowTemplateModal({
                 </>
               )}
             </section>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

@@ -4,6 +4,7 @@ import {
   ACTIVE_CANVAS_ID_KEY,
   PENDING_CANVAS_ID_KEY,
   PENDING_NEW_CANVAS_KEY,
+  PENDING_SYSTEM_WORKFLOW_KEY,
   PENDING_WORKFLOW_TEMPLATE_KEY,
   STORAGE_KEY,
 } from './constants';
@@ -37,6 +38,7 @@ export function setPendingNewCanvas() {
   window.localStorage.setItem(PENDING_NEW_CANVAS_KEY, '1');
   window.localStorage.removeItem(PENDING_CANVAS_ID_KEY);
   window.localStorage.removeItem(PENDING_WORKFLOW_TEMPLATE_KEY);
+  window.localStorage.removeItem(PENDING_SYSTEM_WORKFLOW_KEY);
 }
 
 export function setPendingNewCanvasWithTemplate(templateId) {
@@ -45,8 +47,18 @@ export function setPendingNewCanvasWithTemplate(templateId) {
   window.localStorage.setItem(PENDING_WORKFLOW_TEMPLATE_KEY, String(templateId).trim());
 }
 
+export function setPendingNewCanvasWithSystemWorkflow(workflowId) {
+  setPendingNewCanvas();
+  if (typeof window === 'undefined' || !workflowId) return;
+  window.localStorage.setItem(PENDING_SYSTEM_WORKFLOW_KEY, String(workflowId).trim());
+}
+
 export function readPendingWorkflowTemplate() {
   return readPendingStorage(PENDING_WORKFLOW_TEMPLATE_KEY);
+}
+
+export function readPendingSystemWorkflow() {
+  return readPendingStorage(PENDING_SYSTEM_WORKFLOW_KEY);
 }
 
 export function clearPendingCanvasIntent() {
@@ -54,6 +66,7 @@ export function clearPendingCanvasIntent() {
   window.localStorage.removeItem(PENDING_CANVAS_ID_KEY);
   window.localStorage.removeItem(PENDING_NEW_CANVAS_KEY);
   window.localStorage.removeItem(PENDING_WORKFLOW_TEMPLATE_KEY);
+  window.localStorage.removeItem(PENDING_SYSTEM_WORKFLOW_KEY);
 }
 
 export function readActiveCanvasId() {
