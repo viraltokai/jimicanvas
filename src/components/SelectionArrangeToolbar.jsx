@@ -52,27 +52,29 @@ export function SelectionArrangeToolbar({
       <div className="selection-arrange-divider" aria-hidden="true" />
 
       <div className="selection-arrange-group" role="group" aria-label="打组">
-        <button
-          type="button"
-          className="selection-arrange-btn selection-arrange-btn-label"
-          title="打组"
-          aria-label="打组"
-          onClick={() => onGroup?.()}
-        >
-          <Group size={15} />
-          <span>打组</span>
-        </button>
-        <button
-          type="button"
-          className="selection-arrange-btn selection-arrange-btn-label"
-          title="取消打组"
-          aria-label="取消打组"
-          disabled={!canUngroup}
-          onClick={() => onUngroup?.()}
-        >
-          <Ungroup size={15} />
-          <span>解组</span>
-        </button>
+        {!canUngroup ? (
+          <button
+            type="button"
+            className="selection-arrange-btn selection-arrange-btn-label"
+            title="打组"
+            aria-label="打组"
+            onClick={() => onGroup?.()}
+          >
+            <Group size={15} />
+            <span>打组</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="selection-arrange-btn selection-arrange-btn-label"
+            title="取消打组"
+            aria-label="取消打组"
+            onClick={() => onUngroup?.()}
+          >
+            <Ungroup size={15} />
+            <span>解组</span>
+          </button>
+        )}
         <button
           type="button"
           className="selection-arrange-btn selection-arrange-btn-label"
