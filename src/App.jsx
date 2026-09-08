@@ -140,7 +140,7 @@ import {
   formatImageUnderstandingResult,
 } from './lib/imageApi';
 import { buildStructuredTranslateInstruction, formatStructuredPromptResult } from './lib/promptStructured';
-import { buildImageNodeLayoutPatch, collectImageNodeOutputUrls, computeSplitImageNodePositions, filterRealImageOutputs, formatCellAspectRatio, resolveImageOutputLayout } from './lib/imageNodeLayout';
+import { buildImageNodeLayoutPatch, collectImageNodeOutputUrls, computeSplitImageNodePositions, filterRealImageOutputs, formatCellAspectRatio, getImageNodeDisplayImages, resolveImageOutputLayout } from './lib/imageNodeLayout';
 import { buildVideoNodeLayoutPatch } from './lib/videoNodeLayout';
 import {
   countLocalMediaInDocuments,
@@ -4643,6 +4643,15 @@ function App() {
     uploadAndCreateMultipleNodes(files, dropPoint);
   }
 
+  /** 多图节点里双击了第几张：指针 capture 让 event.target 变成舞台，只能按坐标反查 */
+  function getOutputThumbIndexAt(event) {
+    const thumb = document.elementFromPoint(event.clientX, event.clientY)?.closest?.('.image-output-thumb');
+    const grid = thumb?.parentElement;
+    if (!grid) return 0;
+    const index = Array.from(grid.querySelectorAll('.image-output-thumb')).indexOf(thumb);
+    return index >= 0 ? index : 0;
+  }
+
   function handleStageDoubleClick(event) {
     if (!isStageBackgroundTarget(event)) return;
 
@@ -4652,6 +4661,13 @@ function App() {
     if (hitNode) {
       if (hitNode.type === 'note') {
         openEnlargedTextEdit(hitNode.id, 'content');
+        return;
+      }
+      if (hitNode.type === 'image') {
+        const images = getImageNodeDisplayImages(hitNode);
+        if (images.length > 0) {
+          openImagePreview(images, getOutputThumbIndexAt(event), hitNode.title || '图片预览');
+        }
       }
       return;
     }

@@ -4252,7 +4252,14 @@ textarea {
   display: grid;
   place-items: center;
   padding: 20px;
+  overflow: hidden;
   background: rgba(2, 6, 23, 0.55);
+  cursor: grab;
+  touch-action: none;
+}
+
+.image-preview-stage.is-panning {
+  cursor: grabbing;
 }
 
 .image-preview-stage img {
@@ -4261,6 +4268,49 @@ textarea {
   object-fit: contain;
   border-radius: 12px;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+  transform-origin: center center;
+  will-change: transform;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.image-preview-zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(2, 6, 23, 0.55);
+}
+
+.image-preview-zoom button {
+  display: grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 999px;
+  color: #cbd5f5;
+  background: transparent;
+  cursor: pointer;
+}
+
+.image-preview-zoom button:hover:not(:disabled) {
+  color: #f8fafc;
+  background: rgba(148, 163, 184, 0.16);
+}
+
+.image-preview-zoom button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.image-preview-zoom-value {
+  min-width: 46px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .image-preview-nav {
