@@ -6657,12 +6657,14 @@ html[data-theme='light'] .workflow-template-icon.icon-layers {
   backdrop-filter: none;
 }
 
+/* 放大后提示词框自己滚，不放任它撑到内容高度把后面的控件顶到弹窗外 */
 .node-settings-toolbar-modal .reference-prompt-editor,
 .node-settings-toolbar-modal .node-prompt-input,
 .node-settings-toolbar-modal .reference-prompt-input-container textarea,
 .node-settings-toolbar-modal .node-prompt-wrap textarea {
-  min-height: min(42vh, 360px);
-  max-height: none;
+  min-height: min(38vh, 320px);
+  max-height: min(52vh, 460px);
+  overflow-y: auto;
 }
 
 .node-settings-toolbar-modal .node-prompt-wrap,
@@ -6695,6 +6697,10 @@ html[data-theme='light'] .workflow-template-icon.icon-layers {
 .node-settings-toolbar-modal.video-toolbar-seedance {
   max-height: none;
   transform: none;
+  /* seedance 悬浮工具栏自带滚动容器，留在弹窗里会把滚轮吃掉（overscroll-behavior: contain
+     会阻断滚动冒泡），导致弹窗内容滚不动、底部文字被页脚挡住 */
+  overflow: visible;
+  overscroll-behavior: auto;
 }
 
 .text-edit-modal-input {
