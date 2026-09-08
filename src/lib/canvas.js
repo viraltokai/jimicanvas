@@ -33,7 +33,9 @@ import {
   DEFAULT_AUDIO_MODEL,
   DEFAULT_TEXT_MODE,
   MIN_CANVAS_SCALE,
+  MAX_CANVAS_SCALE,
   DEFAULT_CANVAS_BACKGROUND,
+  DEFAULT_CANVAS_BACKGROUND_COLOR,
 } from './constants';
 import { resolvePreferredTextModel } from './textModel';
 import { computeImageOutputSize, parseRatioValue } from './imageNodeLayout';

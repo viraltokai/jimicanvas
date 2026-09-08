@@ -280,11 +280,32 @@ function canNativeScrollWheel(target, event, boundary) {
   return false;
 }
 
+/**
+ * 首页「新建画布」只在 localStorage 留了一个意图标记，若等云端 hydrate 完再建画布，
+ * 期间会一直显示上一个画布的内容。这里在首屏渲染就把空白画布准备好。
+ * 模块级缓存保证 StrictMode 双调用只生成一个画布，且不在渲染期写 localStorage。
+ */
+let bootstrapBlankCanvasCache;
+
+function resolveBootstrapBlankCanvas(count) {
+  if (bootstrapBlankCanvasCache !== undefined) return bootstrapBlankCanvasCache;
+  const wantsBlank =
+    readPendingNewCanvas() && !readPendingWorkflowTemplate() && !readPendingSystemWorkflow();
+  bootstrapBlankCanvasCache = wantsBlank ? createDocument(`画布 ${count}`, false) : null;
+  return bootstrapBlankCanvasCache;
+}
+
 function App() {
   const { theme, toggleTheme } = useTheme();
   const needsCloudHydrate = useMemo(() => Boolean(getStoredChatToken()), []);
   const initial = useMemo(() => loadInitialState(), []);
-  const [documents, setDocuments] = useState(initial.documents);
+  const bootstrapBlankCanvas = useMemo(
+    () => resolveBootstrapBlankCanvas(initial.documents.length + 1),
+    [initial]
+  );
+  const [documents, setDocuments] = useState(() =>
+    bootstrapBlankCanvas ? [bootstrapBlankCanvas, ...initial.documents] : initial.documents
+  );
   const [storageNotice, setStorageNotice] = useState(() => {
     if (initial.loadedFrom === 'backup') {
       return '已从本地备份恢复画布';
@@ -294,7 +315,9 @@ function App() {
     }
     return '';
   });
-  const [activeCanvasId, setActiveCanvasId] = useState(initial.activeCanvasId);
+  const [activeCanvasId, setActiveCanvasId] = useState(
+    bootstrapBlankCanvas ? bootstrapBlankCanvas.id : initial.activeCanvasId
+  );
   const [selectedNodeIds, setSelectedNodeIds] = useState([]);
   const [selectionMarquee, setSelectionMarquee] = useState(null);
   const [selectedConnectionId, setSelectedConnectionId] = useState(null);
@@ -415,6 +438,8 @@ function App() {
   const recoveredTaskKeysRef = useRef(new Set());
   const recoveryStartedRef = useRef(false);
   const pendingUrlAppliedRef = useRef(false);
+  /** 本地刚新建、云端还没有的画布，hydrate/冲突合并时不能被丢弃 */
+  const localOnlyCanvasIdsRef = useRef(new Set());
   const documentsRef = useRef(documents);
   const mediaPersistTimerRef = useRef(null);
   const mediaPersistSignatureRef = useRef('');
@@ -423,6 +448,16 @@ function App() {
   useEffect(() => {
     documentsRef.current = documents;
   }, [documents]);
+
+  useEffect(() => {
+    if (!bootstrapBlankCanvas) return;
+    // 首屏已经建好空白画布，hydrate 后不要再走一遍新建流程
+    pendingUrlAppliedRef.current = true;
+    localOnlyCanvasIdsRef.current.add(bootstrapBlankCanvas.id);
+    clearPendingCanvasIntent();
+    writeStorage(documentsRef.current);
+    writeActiveCanvasId(bootstrapBlankCanvas.id);
+  }, [bootstrapBlankCanvas]);
 
   useEffect(() => {
     activeCanvasIdRef.current = activeCanvasId;
@@ -558,6 +593,16 @@ function App() {
     }
   };
 
+  /** 云端还没有的本地新画布不能被合并结果吞掉 */
+  const preserveLocalOnlyDocuments = (mergedDocs, localDocs) => {
+    const ids = localOnlyCanvasIdsRef.current;
+    if (ids.size === 0 || !Array.isArray(localDocs)) return mergedDocs;
+    const extras = localDocs.filter(
+      (doc) => ids.has(doc.id) && !mergedDocs.some((item) => item.id === doc.id)
+    );
+    return extras.length > 0 ? [...extras, ...mergedDocs] : mergedDocs;
+  };
+
   const saveActiveCanvasToCloud = async (token) => {
     const doc = getActiveDocumentForCloudSave(documentsRef.current);
     if (!doc?.id) return null;
@@ -567,6 +612,7 @@ function App() {
       activeCanvasId: activeCanvasIdRef.current || doc.id,
     });
     syncCloudVersions(saved);
+    localOnlyCanvasIdsRef.current.delete(doc.id);
     return saved;
   };
 
@@ -622,20 +668,30 @@ function App() {
           const sessionDocs = documentsRef.current;
 
           if (cloudDocs?.length) {
-            const nextDocs = sanitizeDocumentsForPersist(
-              sessionDocs.length > 0
-                ? mergeDocumentsPreservePending(cloudDocs, sessionDocs, {
-                    preserveCloudOnlyDocuments: false,
-                  })
-                : cloudDocs
+            const nextDocs = preserveLocalOnlyDocuments(
+              sanitizeDocumentsForPersist(
+                sessionDocs.length > 0
+                  ? mergeDocumentsPreservePending(cloudDocs, sessionDocs, {
+                      preserveCloudOnlyDocuments: false,
+                    })
+                  : cloudDocs
+              ),
+              sessionDocs
             );
             const pendingId = readPendingCanvasId();
             const keptPendingActive = pendingId && nextDocs.some((doc) => doc.id === pendingId);
-            const nextActiveId = keptPendingActive
-              ? pendingId
-              : cloud.active_canvas_id && nextDocs.some((doc) => doc.id === cloud.active_canvas_id)
-                ? cloud.active_canvas_id
-                : nextDocs[0]?.id;
+            const localActiveId = activeCanvasIdRef.current;
+            const keptLocalActive =
+              localActiveId &&
+              localOnlyCanvasIdsRef.current.has(localActiveId) &&
+              nextDocs.some((doc) => doc.id === localActiveId);
+            const nextActiveId = keptLocalActive
+              ? localActiveId
+              : keptPendingActive
+                ? pendingId
+                : cloud.active_canvas_id && nextDocs.some((doc) => doc.id === cloud.active_canvas_id)
+                  ? cloud.active_canvas_id
+                  : nextDocs[0]?.id;
             setDocuments(nextDocs);
             setActiveCanvasId(nextActiveId);
             writeStorage(nextDocs);
@@ -745,10 +801,13 @@ function App() {
           const latestDocs = parseCloudDocuments(error.latest.documents);
           if (latestDocs?.length) {
             setDocuments((prev) => {
-              const merged = sanitizeDocumentsForPersist(
-                mergeDocumentsPreservePending(latestDocs, prev, {
-                  preserveCloudOnlyDocuments: false,
-                })
+              const merged = preserveLocalOnlyDocuments(
+                sanitizeDocumentsForPersist(
+                  mergeDocumentsPreservePending(latestDocs, prev, {
+                    preserveCloudOnlyDocuments: false,
+                  })
+                ),
+                prev
               );
               writeStorage(merged);
               return merged;
@@ -1301,9 +1360,16 @@ function App() {
   function createCanvas() {
     const count = documents.length + 1;
     const canvas = createDocument(`画布 ${count}`, false);
-    setDocuments((prev) => [canvas, ...prev]);
+    const next = [canvas, ...documentsRef.current];
+    // 云端 hydrate 会丢弃「只存在于本地」的画布，新建后必须立刻落库
+    localOnlyCanvasIdsRef.current.add(canvas.id);
+    documentsRef.current = next;
+    activeCanvasIdRef.current = canvas.id;
+    setDocuments(next);
     setActiveCanvasId(canvas.id);
+    writeActiveCanvasId(canvas.id);
     clearSelection();
+    void flushPersist();
   }
 
   function renameCanvas(name) {
@@ -1405,13 +1471,17 @@ function App() {
           canvas = createDocument(`画布 ${count}`, false);
         }
 
-        setDocuments((prev) => {
-          const next = [canvas, ...prev];
-          writeStorage(next);
-          return next;
-        });
+        const nextDocs = [canvas, ...documentsRef.current];
+        localOnlyCanvasIdsRef.current.add(canvas.id);
+        documentsRef.current = nextDocs;
+        activeCanvasIdRef.current = canvas.id;
+        setDocuments(nextDocs);
         setActiveCanvasId(canvas.id);
+        writeStorage(nextDocs);
+        writeActiveCanvasId(canvas.id);
         clearSelection();
+        // 立刻同步云端，避免刷新时被云端文档覆盖掉这个新画布
+        void flushPersist();
         return;
       }
 
@@ -4282,6 +4352,23 @@ function App() {
     );
   }
 
+  /** 命中最上层节点（后渲染的在上），用于指针被 capture 后的坐标兜底判断 */
+  function getTopNodeAtPointer(event) {
+    const point = getStagePoint(event);
+    if (!point) return null;
+    const { x, y } = point;
+
+    for (let index = nodes.length - 1; index >= 0; index -= 1) {
+      const node = nodes[index];
+      const width = node.width ?? DEFAULT_NODE_WIDTH;
+      const height = node.height ?? DEFAULT_NODE_HEIGHT;
+      if (x >= node.x && x <= node.x + width && y >= node.y && y <= node.y + height) {
+        return node;
+      }
+    }
+    return null;
+  }
+
   function handleStagePointerMove(event) {
     const point = getStagePoint(event);
     if (!point) return;
@@ -4558,6 +4645,16 @@ function App() {
 
   function handleStageDoubleClick(event) {
     if (!isStageBackgroundTarget(event)) return;
+
+    // 文本节点按下即开始拖拽，会把指针 capture 到舞台上，浏览器随后把 click/dblclick
+    // 也改派给舞台，节点自己的双击回调收不到。这里按坐标兜底判断双击是否落在节点上。
+    const hitNode = getTopNodeAtPointer(event);
+    if (hitNode) {
+      if (hitNode.type === 'note') {
+        openEnlargedTextEdit(hitNode.id, 'content');
+      }
+      return;
+    }
 
     const rect = stageRef.current?.getBoundingClientRect();
     if (!rect) return;
