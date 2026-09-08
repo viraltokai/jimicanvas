@@ -119,6 +119,7 @@ import { calculateEstimatedCost } from '../lib/pricing';
 import JimicoinIcon from './JimicoinIcon';
 import { CustomSelect } from './CustomSelect';
 import { NodeGenerationState } from './NodeGenerationState';
+import { NoteRichText } from './NoteRichText';
 import { ReferenceImageChip, ReferencePromptInput, TextReferenceChip } from './ReferencePromptControls';
 import { VideoModelPickerPopover } from './VideoModelPickerPopover';
 import { ImageModelPickerPopover } from './ImageModelPickerPopover';
@@ -490,7 +491,7 @@ function NoteBody({ node, isSelected, isRunning, onBeginDrag, onOpenTextEdit }) 
         onPointerDown={(event) => onBeginDrag(event, node)}
         onDoubleClick={(event) => openContentEdit(event)}
       >
-        {displayContent}
+        {isPlaceholder ? displayContent : <NoteRichText text={displayContent} />}
       </div>
     </div>
   );

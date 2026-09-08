@@ -972,8 +972,16 @@ async function urlToVideoInlineData(url) {
   return inlineData;
 }
 
-async function pollVideoUnderstandingTask(token, taskId) {
+function throwIfAborted(signal) {
+  if (!signal?.aborted) return;
+  const error = new Error('已取消');
+  error.name = 'AbortError';
+  throw error;
+}
+
+async function pollVideoUnderstandingTask(token, taskId, signal) {
   for (let attempt = 0; attempt < VIDEO_UNDERSTAND_MAX_RETRIES; attempt += 1) {
+    throwIfAborted(signal);
     const task = await requestJson(`/api/video/understand/task/${encodeURIComponent(taskId)}`, {
       token,
       method: 'GET',
@@ -1047,6 +1055,74 @@ export async function understandVideo({
 
   await sleep(2000);
   return pollVideoUnderstandingTask(token, taskId);
+}
+
+/** 上传视频，返回明文 URL（用于展示留存）与签名 URL（用于服务端下载理解） */
+export async function uploadVideoFile({ token, file }) {
+  if (!file) throw new Error('请选择要上传的视频文件');
+
+  const formData = new FormData();
+  formData.append('file', file);
+  const data = await requestJimiaigoForm('/api/video/upload', {
+    token,
+    body: formData,
+    fallback: '视频上传失败',
+    networkErrorMessage: '视频上传失败，无法连接到视频服务',
+  });
+
+  const signedUrl = String(data?.signed_url || '').trim();
+  const plainUrl = String(data?.url || '').trim();
+  if (!signedUrl && !plainUrl) throw new Error('视频上传失败');
+
+  return { url: plainUrl || signedUrl, signedUrl: signedUrl || plainUrl };
+}
+
+/**
+ * 视频理解：只把 video_url 交给服务端下载，不在浏览器里 base64 整段视频。
+ * type 为空时由服务端按默认提示词处理，promptText 只在自定义提问时传。
+ */
+export async function understandVideoByUrl({
+  token,
+  videoUrl,
+  promptText = '',
+  language = 'zh',
+  type = '',
+  title = '',
+  source = 'canvas-xiaomi',
+  signal,
+} = {}) {
+  const url = String(videoUrl || '').trim();
+  if (!url) throw new Error('请先上传视频后再理解');
+
+  const parts = [];
+  const instruction = String(promptText || '').trim();
+  if (instruction) parts.push({ text: instruction });
+
+  const body = {
+    contents: [{ role: 'user', parts }],
+    generationConfig: {},
+    video_url: url,
+  };
+  if (type) body.type = type;
+  if (language) body.language = language;
+  if (source) body.source = source;
+  if (title) body.title = String(title).slice(0, 60);
+
+  const submission = await requestJson('/api/video/understand/async', {
+    token,
+    method: 'POST',
+    body,
+    networkErrorMessage: '视频理解失败，无法连接到服务',
+  });
+
+  const taskId = submission?.taskId || submission?.task_id;
+  if (!taskId) {
+    throw new Error('视频理解任务提交失败，未返回任务 ID');
+  }
+
+  throwIfAborted(signal);
+  await sleep(2000);
+  return pollVideoUnderstandingTask(token, taskId, signal);
 }
 
 export const VIDEO_TRANSLATE_MAX_SECONDS = 8 * 60;

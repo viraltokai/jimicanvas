@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ImagePlus, Loader2, Send, Square, Trash2, X } from 'lucide-react';
+import { ChevronDown, FileVideo, ImagePlus, Loader2, Send, Square, Trash2, X } from 'lucide-react';
 import { TEXT_MODEL_OPTIONS } from '../lib/constants';
 import {
   chatCompletionsStream,
@@ -7,6 +7,7 @@ import {
   getStoredChatToken,
 } from '../lib/chatApi';
 import { uploadAsset } from '../lib/imageApi';
+import { understandVideoByUrl, uploadVideoFile } from '../lib/videoApi';
 import {
   persistPreferredTextModel,
   resolvePreferredTextModel,
@@ -18,6 +19,25 @@ const ASSISTANT_NAME = '小咪';
 const STORAGE_KEY = 'global_chat_messages_v1';
 const STORAGE_POS_KEY = 'global_chat_launcher_position_v1';
 const MAX_IMAGES = 5;
+/** 视频理解结果以隐藏文本注入对话，前缀用于在界面上过滤掉 */
+const VIDEO_CONTEXT_MARKER = '[视频理解]';
+const DEFAULT_VIDEO_QUESTION = '帮我看看这个视频';
+
+const VIDEO_TEMPLATES = [
+  { id: 'chat', type: 'chat', label: '内容总结' },
+  { id: 'prompt', type: 'prompt', label: '反推提示词' },
+  { id: 'subtitle-script', type: 'subtitle-script', label: '逐字稿' },
+  { id: 'custom', type: 'chat', label: '自定义提问' },
+];
+
+function findVideoTemplate(id) {
+  return VIDEO_TEMPLATES.find((item) => item.id === id) || VIDEO_TEMPLATES[0];
+}
+
+function isVideoFile(file) {
+  if (!file) return false;
+  return file.type.startsWith('video/') || /\.(mp4|mov|webm|mkv|avi|m4v)$/i.test(file.name || '');
+}
 
 function loadMessages() {
   try {
@@ -44,8 +64,10 @@ function messageText(content) {
   return content
     .map((part) => {
       if (typeof part === 'string') return part;
-      if (part?.type === 'text') return part.text || '';
-      return '';
+      if (part?.type !== 'text') return '';
+      const text = part.text || '';
+      // 视频理解结果只给模型看，不在气泡里展示
+      return text.startsWith(VIDEO_CONTEXT_MARKER) ? '' : text;
     })
     .join('');
 }
@@ -55,6 +77,22 @@ function messageImages(content) {
   return content
     .map((part) => (part?.type === 'image_url' ? part.image_url?.url : ''))
     .filter(Boolean);
+}
+
+function messageVideos(content) {
+  if (!Array.isArray(content)) return [];
+  return content
+    .map((part) => (part?.type === 'video_url' ? part.video_url?.url : ''))
+    .filter(Boolean);
+}
+
+function revokePreview(preview) {
+  if (!preview?.startsWith('blob:')) return;
+  try {
+    URL.revokeObjectURL(preview);
+  } catch {
+    /* ignore */
+  }
 }
 
 function toApiMessages(messages) {
@@ -231,10 +269,16 @@ export function GlobalChatWidget({ onNeedLogin } = {}) {
   const [modelOpen, setModelOpen] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [pendingImages, setPendingImages] = useState([]);
+  const [pendingVideo, setPendingVideo] = useState(null);
+  const [videoTemplateId, setVideoTemplateId] = useState('chat');
+  const [phase, setPhase] = useState('idle');
   const [error, setError] = useState('');
   const listRef = useRef(null);
   const fileRef = useRef(null);
+  const videoFileRef = useRef(null);
   const abortRef = useRef(null);
+  const needsCustomQuestion = Boolean(pendingVideo) && videoTemplateId === 'custom' && !input.trim();
+  const canSend = Boolean(input.trim() || pendingImages.length > 0 || pendingVideo) && !needsCustomQuestion;
   const modelLabel = useMemo(
     () => TEXT_MODEL_OPTIONS.find((item) => item.value === model)?.label || model,
     [model]
@@ -273,20 +317,33 @@ export function GlobalChatWidget({ onNeedLogin } = {}) {
     setPendingImages((prev) => {
       const copy = [...prev];
       const [removed] = copy.splice(index, 1);
-      if (removed?.preview?.startsWith('blob:')) {
-        try {
-          URL.revokeObjectURL(removed.preview);
-        } catch {
-          /* ignore */
-        }
-      }
+      revokePreview(removed?.preview);
       return copy;
     });
   }
 
+  function handlePickVideo(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!isVideoFile(file)) {
+      setError('请选择视频文件');
+      return;
+    }
+    setError('');
+    revokePreview(pendingVideo?.preview);
+    setPendingVideo({ file, name: file.name, preview: URL.createObjectURL(file) });
+    setVideoTemplateId('chat');
+  }
+
+  function removePendingVideo() {
+    revokePreview(pendingVideo?.preview);
+    setPendingVideo(null);
+  }
+
   async function sendMessage() {
     const text = input.trim();
-    if ((!text && pendingImages.length === 0) || isStreaming) return;
+    if (isStreaming || !canSend) return;
 
     let token = getStoredChatToken();
     if (!token) {
@@ -304,6 +361,7 @@ export function GlobalChatWidget({ onNeedLogin } = {}) {
 
     const controller = new AbortController();
     abortRef.current = controller;
+    let messageAppended = false;
 
     try {
       const uploadedUrls = [];
@@ -318,27 +376,71 @@ export function GlobalChatWidget({ onNeedLogin } = {}) {
         uploadedUrls.push(uploaded);
       }
 
-      pendingImages.forEach((item) => {
-        if (item.preview?.startsWith('blob:')) {
-          try {
-            URL.revokeObjectURL(item.preview);
-          } catch {
-            /* ignore */
-          }
-        }
-      });
+      pendingImages.forEach((item) => revokePreview(item.preview));
       setPendingImages([]);
 
+      const template = findVideoTemplate(videoTemplateId);
+      const isCustomTemplate = template.id === 'custom';
+      let videoDisplayUrl = '';
+      let videoAnalysis = '';
+
+      if (pendingVideo) {
+        setPhase('uploading');
+        let understandUrl = pendingVideo.url || '';
+        videoDisplayUrl = pendingVideo.url || '';
+
+        if (!understandUrl && pendingVideo.file) {
+          const uploaded = await uploadVideoFile({ token, file: pendingVideo.file });
+          // 签名地址给服务端下载用，明文地址留在消息里长期可播
+          understandUrl = uploaded.signedUrl;
+          videoDisplayUrl = uploaded.url;
+        }
+        if (!understandUrl) throw new Error('视频上传失败');
+
+        setPhase('understanding');
+        videoAnalysis = await understandVideoByUrl({
+          token,
+          videoUrl: understandUrl,
+          type: template.type,
+          promptText: isCustomTemplate ? text : '',
+          title: (isCustomTemplate ? text : template.label) || pendingVideo.name || '小咪视频提问',
+          signal: controller.signal,
+        });
+        if (!videoAnalysis) throw new Error('视频理解失败，请换个视频再试');
+
+        revokePreview(pendingVideo.preview);
+        setPendingVideo(null);
+      }
+
+      setPhase('chatting');
+
+      const visibleText = pendingVideo
+        ? isCustomTemplate
+          ? text
+          : [template.label, text].filter(Boolean).join('\n') || DEFAULT_VIDEO_QUESTION
+        : text;
+
       const parts = [];
-      if (text) parts.push({ type: 'text', text });
+      if (visibleText) parts.push({ type: 'text', text: visibleText });
       uploadedUrls.forEach((url) => {
         parts.push({ type: 'image_url', image_url: { url } });
       });
-      const userContent = parts.length <= 1 && parts[0]?.type === 'text' ? text : parts;
+      if (videoDisplayUrl) {
+        parts.push({ type: 'video_url', video_url: { url: videoDisplayUrl } });
+      }
+      if (videoAnalysis) {
+        const ask = text || visibleText || DEFAULT_VIDEO_QUESTION;
+        parts.push({
+          type: 'text',
+          text: `${VIDEO_CONTEXT_MARKER}\n请根据以下视频理解结果直接作答，不要寒暄或自我介绍。\n\n【用户需求】\n${ask}\n\n【视频理解结果】\n${videoAnalysis}`,
+        });
+      }
+      const userContent = parts.length <= 1 && parts[0]?.type === 'text' ? visibleText : parts;
 
       const userMsg = { role: 'user', content: userContent, createdAt: Date.now() };
       const assistantMsg = { role: 'assistant', content: '', createdAt: Date.now() };
       const nextMessages = [...messages, userMsg, assistantMsg];
+      messageAppended = true;
       setMessages(nextMessages);
 
       let assistantContent = '';
@@ -357,7 +459,7 @@ export function GlobalChatWidget({ onNeedLogin } = {}) {
       await chatCompletionsStream({
         token,
         model,
-        title: text || '图片提问',
+        title: text || (videoDisplayUrl ? '视频提问' : '图片提问'),
         messages: toApiMessages(nextMessages),
         signal: controller.signal,
         onDelta: (delta) => updateAssistant(delta),
@@ -370,17 +472,23 @@ export function GlobalChatWidget({ onNeedLogin } = {}) {
       if (!(err instanceof Error && err.name === 'AbortError')) {
         const tip = err instanceof Error ? err.message : '发送失败';
         setError(tip);
-        setMessages((prev) => {
-          const copy = [...prev];
-          const last = copy[copy.length - 1];
-          if (last?.role === 'assistant' && !String(last.content || '').trim()) {
-            copy[copy.length - 1] = { ...last, content: `（请求失败：${tip}）` };
-          }
-          return copy;
-        });
+        if (messageAppended) {
+          setMessages((prev) => {
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            if (last?.role === 'assistant' && !String(last.content || '').trim()) {
+              copy[copy.length - 1] = { ...last, content: `（请求失败：${tip}）` };
+            }
+            return copy;
+          });
+        } else if (text) {
+          // 上传/理解阶段就失败了，把输入还回去，别让用户白打一遍
+          setInput((current) => current || text);
+        }
       }
     } finally {
       setIsStreaming(false);
+      setPhase('idle');
       abortRef.current = null;
     }
   }
@@ -429,6 +537,7 @@ export function GlobalChatWidget({ onNeedLogin } = {}) {
               messages.map((msg, index) => {
                 const text = messageText(msg.content);
                 const images = messageImages(msg.content);
+                const videos = messageVideos(msg.content);
                 const isUser = msg.role === 'user';
                 return (
                   <div
@@ -446,6 +555,13 @@ export function GlobalChatWidget({ onNeedLogin } = {}) {
                         <div className="xiaomi-msg-images">
                           {images.map((url) => (
                             <img key={url} src={url} alt="" />
+                          ))}
+                        </div>
+                      ) : null}
+                      {videos.length ? (
+                        <div className="xiaomi-msg-videos">
+                          {videos.map((url) => (
+                            <video key={url} src={url} controls preload="metadata" />
                           ))}
                         </div>
                       ) : null}
@@ -471,6 +587,39 @@ export function GlobalChatWidget({ onNeedLogin } = {}) {
                   </button>
                 </div>
               ))}
+            </div>
+          ) : null}
+
+          {pendingVideo ? (
+            <div className="xiaomi-pending-video-wrap">
+              <div className="xiaomi-pending-video">
+                <video src={pendingVideo.preview} muted preload="metadata" />
+                <span className="xiaomi-pending-video-name">{pendingVideo.name || '待理解视频'}</span>
+                <button
+                  type="button"
+                  onClick={removePendingVideo}
+                  title="移除视频"
+                  disabled={isStreaming}
+                >
+                  <X size={12} />
+                </button>
+              </div>
+              <div className="xiaomi-video-templates">
+                {VIDEO_TEMPLATES.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={item.id === videoTemplateId ? 'is-active' : ''}
+                    disabled={isStreaming}
+                    onClick={() => setVideoTemplateId(item.id)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              {needsCustomQuestion ? (
+                <p className="xiaomi-video-tip">自定义提问需要先在下面输入你的问题</p>
+              ) : null}
             </div>
           ) : null}
 
@@ -522,6 +671,22 @@ export function GlobalChatWidget({ onNeedLogin } = {}) {
                 hidden
                 onChange={handlePickImages}
               />
+              <button
+                type="button"
+                className="xiaomi-icon-btn"
+                title="添加视频（理解视频内容）"
+                disabled={isStreaming || Boolean(pendingVideo)}
+                onClick={() => videoFileRef.current?.click()}
+              >
+                <FileVideo size={15} />
+              </button>
+              <input
+                ref={videoFileRef}
+                type="file"
+                accept="video/*"
+                hidden
+                onChange={handlePickVideo}
+              />
             </div>
 
             <div className="xiaomi-composer">
@@ -547,8 +712,8 @@ export function GlobalChatWidget({ onNeedLogin } = {}) {
                   type="button"
                   className="xiaomi-send"
                   onClick={sendMessage}
-                  disabled={!input.trim() && pendingImages.length === 0}
-                  title="发送"
+                  disabled={!canSend}
+                  title={needsCustomQuestion ? '请先输入你的问题' : '发送'}
                 >
                   <Send size={14} />
                 </button>
@@ -557,7 +722,11 @@ export function GlobalChatWidget({ onNeedLogin } = {}) {
             {isStreaming ? (
               <div className="xiaomi-streaming-hint">
                 <Loader2 size={12} className="spin-icon" />
-                正在回复…
+                {phase === 'uploading'
+                  ? '正在上传视频…'
+                  : phase === 'understanding'
+                    ? '正在理解视频，大概需要几十秒…'
+                    : '正在回复…'}
               </div>
             ) : null}
           </footer>

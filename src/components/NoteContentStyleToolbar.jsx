@@ -14,13 +14,32 @@ const FONT_SIZE_OPTIONS = NOTE_CONTENT_FONT_SIZES.map((size) => ({
   label: `${size}px`,
 }));
 
-export function NoteContentStyleToolbar({ contentStyle, onChange }) {
+export function NoteContentStyleToolbar({
+  contentStyle,
+  onChange,
+  hasSelection = false,
+  selectionMarks = null,
+  onToggleInlineMark = null,
+}) {
   const style = normalizeNoteContentStyle(contentStyle);
   const isBold = style.fontWeight === 'bold';
   const isItalic = style.fontStyle === 'italic';
+  // 有选区时按钮只作用于选中的文字，状态也跟着选区走
+  const boldActive = hasSelection ? Boolean(selectionMarks?.bold) : isBold;
+  const italicActive = hasSelection ? Boolean(selectionMarks?.italic) : isItalic;
 
   function update(patch) {
     onChange(patch);
+  }
+
+  function toggleBold() {
+    if (hasSelection && onToggleInlineMark?.('bold')) return;
+    update({ fontWeight: isBold ? 'normal' : 'bold' });
+  }
+
+  function toggleItalic() {
+    if (hasSelection && onToggleInlineMark?.('italic')) return;
+    update({ fontStyle: isItalic ? 'normal' : 'italic' });
   }
 
   return (
@@ -40,17 +59,17 @@ export function NoteContentStyleToolbar({ contentStyle, onChange }) {
       <div className="note-style-group note-style-toggle-group">
         <button
           type="button"
-          className={`note-style-toggle ${isBold ? 'active' : ''}`}
-          title="加粗"
-          onClick={() => update({ fontWeight: isBold ? 'normal' : 'bold' })}
+          className={`note-style-toggle ${boldActive ? 'active' : ''}`}
+          title={hasSelection ? '加粗选中文字（⌘/Ctrl + B）' : '整段加粗'}
+          onClick={toggleBold}
         >
           <Bold size={14} />
         </button>
         <button
           type="button"
-          className={`note-style-toggle ${isItalic ? 'active' : ''}`}
-          title="斜体"
-          onClick={() => update({ fontStyle: isItalic ? 'normal' : 'italic' })}
+          className={`note-style-toggle ${italicActive ? 'active' : ''}`}
+          title={hasSelection ? '选中文字改斜体（⌘/Ctrl + I）' : '整段斜体'}
+          onClick={toggleItalic}
         >
           <Italic size={14} />
         </button>
