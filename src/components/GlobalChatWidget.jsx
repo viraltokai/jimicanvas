@@ -6,7 +6,7 @@ import {
   getOrRequestToken,
   getStoredChatToken,
 } from '../lib/chatApi';
-import { uploadAsset } from '../lib/imageApi';
+import { understandImage, uploadAsset } from '../lib/imageApi';
 import { understandVideoByUrl, uploadVideoFile } from '../lib/videoApi';
 import {
   persistPreferredTextModel,
@@ -19,9 +19,15 @@ const ASSISTANT_NAME = '小咪';
 const STORAGE_KEY = 'global_chat_messages_v1';
 const STORAGE_POS_KEY = 'global_chat_launcher_position_v1';
 const MAX_IMAGES = 5;
-/** 视频理解结果以隐藏文本注入对话，前缀用于在界面上过滤掉 */
+/** 媒体理解结果以隐藏文本注入对话，前缀用于在界面上过滤掉 */
 const VIDEO_CONTEXT_MARKER = '[视频理解]';
+const IMAGE_CONTEXT_MARKER = '[图片理解]';
+const CONTEXT_MARKERS = [VIDEO_CONTEXT_MARKER, IMAGE_CONTEXT_MARKER];
 const DEFAULT_VIDEO_QUESTION = '帮我看看这个视频';
+const DEFAULT_IMAGE_QUESTION = '帮我看看这张图片';
+/** 聊天模型拿不到 image_url，图片先走后端理解接口转成文字 */
+const IMAGE_CHAT_INSTRUCTION =
+  '请客观、详细地描述这张图片：主体与细节、构图与画面结构、色彩与光影、风格质感、画面中可见的文字。';
 
 const VIDEO_TEMPLATES = [
   { id: 'chat', type: 'chat', label: '内容总结' },
@@ -66,8 +72,8 @@ function messageText(content) {
       if (typeof part === 'string') return part;
       if (part?.type !== 'text') return '';
       const text = part.text || '';
-      // 视频理解结果只给模型看，不在气泡里展示
-      return text.startsWith(VIDEO_CONTEXT_MARKER) ? '' : text;
+      // 图片/视频理解结果只给模型看，不在气泡里展示
+      return CONTEXT_MARKERS.some((marker) => text.startsWith(marker)) ? '' : text;
     })
     .join('');
 }
@@ -95,12 +101,46 @@ function revokePreview(preview) {
   }
 }
 
+/** 合并多段 text，并丢掉 blob: 这类模型访问不到的地址 */
+function toApiContent(content) {
+  if (!Array.isArray(content)) return content;
+
+  const texts = [];
+  const extras = [];
+  content.forEach((part) => {
+    if (!part) return;
+    if (part.type === 'text' && part.text) {
+      texts.push(part.text);
+      return;
+    }
+    const url = part.type === 'image_url' ? part.image_url?.url : part.video_url?.url;
+    if (!url || url.startsWith('blob:')) return;
+    if (part.type === 'image_url' || part.type === 'video_url') extras.push(part);
+  });
+
+  const text = texts.join('\n\n').trim();
+  if (extras.length === 0) return text;
+  return text ? [{ type: 'text', text }, ...extras] : extras;
+}
+
+function isEmptyAssistantContent(content) {
+  if (typeof content === 'string') return !content.trim();
+  if (!Array.isArray(content)) return true;
+  return !content.some((part) => part?.type === 'text' && part.text?.trim());
+}
+
 function toApiMessages(messages) {
-  return messages
-    .filter((item) => item.role === 'user' || item.role === 'assistant')
+  const list = messages.filter((item) => item.role === 'user' || item.role === 'assistant');
+  return list
+    .filter((item, index) => {
+      // 末尾那条还没开始流的 assistant 占位不能发给上游，否则模型会把它当成待续写的回复
+      if (item.role !== 'assistant') return true;
+      if (!isEmptyAssistantContent(item.content)) return true;
+      return index !== list.length - 1;
+    })
     .map((item) => ({
       role: item.role,
-      content: item.content,
+      content: toApiContent(item.content),
     }));
 }
 
@@ -364,6 +404,8 @@ export function GlobalChatWidget({ onNeedLogin } = {}) {
     let messageAppended = false;
 
     try {
+      if (pendingImages.length > 0 || pendingVideo) setPhase('uploading');
+
       const uploadedUrls = [];
       for (const item of pendingImages) {
         if (item.url) {
@@ -378,6 +420,23 @@ export function GlobalChatWidget({ onNeedLogin } = {}) {
 
       pendingImages.forEach((item) => revokePreview(item.preview));
       setPendingImages([]);
+
+      let imageAnalysis = '';
+      if (uploadedUrls.length > 0) {
+        setPhase('understanding-image');
+        try {
+          imageAnalysis = await understandImage({
+            token,
+            imageUrls: uploadedUrls,
+            promptText: [IMAGE_CHAT_INSTRUCTION, text ? `用户想知道：${text}` : '']
+              .filter(Boolean)
+              .join('\n'),
+          });
+        } catch (err) {
+          // 理解失败不挡住聊天，退化成纯文字对话并提示一下
+          setError(err instanceof Error ? `图片理解失败：${err.message}` : '图片理解失败');
+        }
+      }
 
       const template = findVideoTemplate(videoTemplateId);
       const isCustomTemplate = template.id === 'custom';
@@ -397,7 +456,7 @@ export function GlobalChatWidget({ onNeedLogin } = {}) {
         }
         if (!understandUrl) throw new Error('视频上传失败');
 
-        setPhase('understanding');
+        setPhase('understanding-video');
         videoAnalysis = await understandVideoByUrl({
           token,
           videoUrl: understandUrl,
@@ -427,6 +486,13 @@ export function GlobalChatWidget({ onNeedLogin } = {}) {
       });
       if (videoDisplayUrl) {
         parts.push({ type: 'video_url', video_url: { url: videoDisplayUrl } });
+      }
+      if (imageAnalysis) {
+        const ask = text || DEFAULT_IMAGE_QUESTION;
+        parts.push({
+          type: 'text',
+          text: `${IMAGE_CONTEXT_MARKER}\n请根据以下图片理解结果直接作答，不要寒暄，也不要让用户重新上传图片。\n\n【用户需求】\n${ask}\n\n【图片理解结果】\n${imageAnalysis}`,
+        });
       }
       if (videoAnalysis) {
         const ask = text || visibleText || DEFAULT_VIDEO_QUESTION;
@@ -723,10 +789,12 @@ export function GlobalChatWidget({ onNeedLogin } = {}) {
               <div className="xiaomi-streaming-hint">
                 <Loader2 size={12} className="spin-icon" />
                 {phase === 'uploading'
-                  ? '正在上传视频…'
-                  : phase === 'understanding'
-                    ? '正在理解视频，大概需要几十秒…'
-                    : '正在回复…'}
+                  ? '正在上传素材…'
+                  : phase === 'understanding-image'
+                    ? '正在识别图片…'
+                    : phase === 'understanding-video'
+                      ? '正在理解视频，大概需要几十秒…'
+                      : '正在回复…'}
               </div>
             ) : null}
           </footer>

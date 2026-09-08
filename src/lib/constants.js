@@ -8,6 +8,8 @@ export const STORAGE_KEY = 'jimicanvas.documents.v1';
 export const ACTIVE_CANVAS_ID_KEY = 'jimicanvas.active_canvas_id';
 export const JIMIAIGO_TOKEN_STORAGE_KEY = 'jimicanvas.jimiaigo.token';
 export const ADMIN_TOKEN_COOKIE_KEY = 'Admin-Token';
+/** 上传场景标记，后端据此把画布资源放到 canvas/ 前缀下 */
+export const UPLOAD_SCENE = 'canvas';
 /** 从 jimiaiapp 跳转时暂存待打开的画布 ID */
 export const PENDING_CANVAS_ID_KEY = 'jimicanvas.pending_canvas_id';
 /** 从 jimiaiapp 跳转时标记需要新建画布 */

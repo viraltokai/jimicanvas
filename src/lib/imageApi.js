@@ -1,4 +1,9 @@
-import { DEFAULT_IMAGE_MODEL, DEFAULT_IMAGE_RATIO, DEFAULT_IMAGE_RESOLUTION } from './constants';
+import {
+  DEFAULT_IMAGE_MODEL,
+  DEFAULT_IMAGE_RATIO,
+  DEFAULT_IMAGE_RESOLUTION,
+  UPLOAD_SCENE,
+} from './constants';
 import { getApiUrl, getChatApiBaseUrl, getStoredChatToken, requestJimiaigo, requestJimiaigoForm } from './jimiaigoApi';
 import {
   DEFAULT_IMAGE_TO_PROMPT_INSTRUCTION,
@@ -260,6 +265,8 @@ export async function readVideoFile(file) {
 export async function uploadAsset({ token, file }) {
   const formData = new FormData();
   formData.append('file', file);
+  // 画布资源单独归到 canvas/ 前缀，便于对象存储按前缀配生命周期
+  formData.append('scene', UPLOAD_SCENE);
   const data = await requestForm('/api/asset/upload', { token, formData });
   return normalizeImageUrl(data?.url || '');
 }

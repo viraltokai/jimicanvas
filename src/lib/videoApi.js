@@ -1,4 +1,9 @@
-import { DEFAULT_VIDEO_FAMILY, DEFAULT_VIDEO_ROUTE, OMNI_REFERENCE_IMAGE_MAX } from './constants';
+import {
+  DEFAULT_VIDEO_FAMILY,
+  DEFAULT_VIDEO_ROUTE,
+  OMNI_REFERENCE_IMAGE_MAX,
+  UPLOAD_SCENE,
+} from './constants';
 import { requestJimiaigo, requestJimiaigoForm } from './jimiaigoApi';
 import { normalizeImageUrl, uploadAsset } from './imageApi';
 import {
@@ -1063,6 +1068,7 @@ export async function uploadVideoFile({ token, file }) {
 
   const formData = new FormData();
   formData.append('file', file);
+  formData.append('scene', UPLOAD_SCENE);
   const data = await requestJimiaigoForm('/api/video/upload', {
     token,
     body: formData,
