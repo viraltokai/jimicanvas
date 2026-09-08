@@ -90,6 +90,7 @@ export function normalizeCustomWorkflow(raw) {
           : '',
     groupBackground:
       typeof raw.groupBackground === 'string' ? String(raw.groupBackground).trim() : '',
+    applyCount: Number(raw.applyCount ?? raw.apply_count) || 0,
     nodes,
     connections,
     createdAt: Number(raw.createdAt) || Date.now(),

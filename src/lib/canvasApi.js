@@ -208,6 +208,19 @@ export async function fetchSystemWorkflow(token, workflowId) {
   return data?.workflow || null;
 }
 
+/** 记录一次「应用到画布」，失败不影响主流程 */
+export async function reportSystemWorkflowApplied(token, workflowId) {
+  if (!workflowId) return;
+  try {
+    await requestCanvas(
+      `/api/canvas/system-workflows/${encodeURIComponent(workflowId)}/apply`,
+      { token, method: 'POST' }
+    );
+  } catch (error) {
+    console.warn('report system workflow apply failed', error);
+  }
+}
+
 /** 管理员保存系统工作流 */
 export async function saveSystemWorkflowCloud(token, workflow, { sortOrder = 0, status = 1 } = {}) {
   if (!workflow?.id) {

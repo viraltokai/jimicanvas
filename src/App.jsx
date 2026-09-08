@@ -111,6 +111,7 @@ import {
   fetchSystemWorkflow,
   fetchSystemWorkflows,
   parseCloudDocuments,
+  reportSystemWorkflowApplied,
   saveCanvasDocument,
   saveCanvasDocumentKeepalive,
   saveCanvasDocuments,
@@ -1390,6 +1391,7 @@ function App() {
             canvas = workflow
               ? createDocumentFromWorkflowFragment(workflow, `${workflow.name} · ${count}`)
               : createDocument(`画布 ${count}`, false);
+            if (workflow) reportSystemWorkflowApplied(token, systemWorkflowId);
           } catch (error) {
             console.warn('load pending system workflow failed', error);
             canvas = createDocument(`画布 ${count}`, false);
@@ -1716,6 +1718,7 @@ function App() {
     setSystemPreviewAdding(true);
     try {
       insertWorkflowTemplate(workflow.id, { source: 'system', workflow });
+      reportSystemWorkflowApplied(getStoredChatToken(), workflow.id);
     } finally {
       setSystemPreviewAdding(false);
     }

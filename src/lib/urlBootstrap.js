@@ -1,8 +1,12 @@
-import { PENDING_CANVAS_ID_KEY, PENDING_NEW_CANVAS_KEY } from './constants';
+import {
+  PENDING_CANVAS_ID_KEY,
+  PENDING_NEW_CANVAS_KEY,
+  PENDING_SYSTEM_WORKFLOW_KEY,
+} from './constants';
 import { syncStoredChatToken } from './jimiaigoApi';
 
 /**
- * 解析 URL 中的 at / canvas / new，写入 storage 后从地址栏移除。
+ * 解析 URL 中的 at / canvas / new / workflow，写入 storage 后从地址栏移除。
  */
 export function bootstrapFromUrl() {
   if (typeof window === 'undefined') return;
@@ -38,6 +42,20 @@ export function bootstrapFromUrl() {
     window.localStorage.setItem(PENDING_NEW_CANVAS_KEY, '1');
     window.localStorage.removeItem(PENDING_CANVAS_ID_KEY);
     params.delete('new');
+    changed = true;
+  }
+
+  // 站外（灵感广场等）带系统工作流跳转过来：新建画布并自动铺入该工作流
+  const systemWorkflowId = params.get('workflow') || params.get('system_workflow');
+  if (systemWorkflowId) {
+    const id = String(systemWorkflowId).trim();
+    if (id) {
+      window.localStorage.setItem(PENDING_SYSTEM_WORKFLOW_KEY, id);
+      window.localStorage.setItem(PENDING_NEW_CANVAS_KEY, '1');
+      window.localStorage.removeItem(PENDING_CANVAS_ID_KEY);
+    }
+    params.delete('workflow');
+    params.delete('system_workflow');
     changed = true;
   }
 
