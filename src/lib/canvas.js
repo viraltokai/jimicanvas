@@ -105,6 +105,7 @@ export function createNode(type, x, y) {
       videoQuality: DEFAULT_VIDEO_QUALITY,
       videoCount: DEFAULT_VIDEO_COUNT,
       videoGenerationType: DEFAULT_VEO_GENERATION_TYPE,
+      videoGenTypeMigrated: 1,
       videoFlux3Mode: 't2v',
       flux3GenerateAudio: true,
       flux3DraftCacheUrl: '',

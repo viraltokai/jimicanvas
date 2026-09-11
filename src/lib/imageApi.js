@@ -23,7 +23,13 @@ const FAILED_STATUS = new Set(['failed', 'error']);
 export function normalizeImageUrl(url) {
   const value = String(url || '').trim();
   if (!value) return '';
-  if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('data:') || value.startsWith('blob:')) {
+  if (
+    value.startsWith('http://') ||
+    value.startsWith('https://') ||
+    value.startsWith('data:') ||
+    value.startsWith('blob:') ||
+    value.startsWith('asset://')
+  ) {
     return value;
   }
   if (value.startsWith('//')) {

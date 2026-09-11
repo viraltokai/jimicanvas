@@ -113,13 +113,22 @@ export function resolveBillingModelName(node, options = {}) {
         const res = resolution === '1080p' ? '1080p' : (resolution === '720p' ? '720p' : '480p');
         return `seedance2.0-933-${res}`;
       }
-      const map = {
-        '720p': 'sd2_mx_720p',
-        '1080p': 'sd2_mx_1080p',
-        '2k': 'sd2_mx_2k',
-        '4k': 'sd2_mx_4k',
-      };
-      return map[resolution] || 'sd2_mx_720p';
+      const pickedVideos = Array.isArray(node.videoReferenceVideos) ? node.videoReferenceVideos : [];
+      const useVideoModel = hasVideoRefs || pickedVideos.length > 0;
+      const map = useVideoModel
+        ? {
+            '720p': 'sd2_mx_video_720p',
+            '1080p': 'sd2_mx_video_1080p',
+            '2k': 'sd2_mx_video_2k',
+            '4k': 'sd2_mx_video_4k',
+          }
+        : {
+            '720p': 'sd2_mx_720p',
+            '1080p': 'sd2_mx_1080p',
+            '2k': 'sd2_mx_2k',
+            '4k': 'sd2_mx_4k',
+          };
+      return map[resolution] || (useVideoModel ? 'sd2_mx_video_720p' : 'sd2_mx_720p');
     }
     if (family === 'seedance25') {
       return `seedance-2.5-${resolution === '720p' ? '720p' : '480p'}`;

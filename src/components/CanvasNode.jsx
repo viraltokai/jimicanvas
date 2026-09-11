@@ -2154,7 +2154,7 @@ export function VideoToolbar({
     };
 
     if (nextFamily === 'veo' || nextFamily === 'minimax') {
-      patch.videoGenerationType = nextSettings.generationType || 'frame';
+      patch.videoGenerationType = nextSettings.generationType;
       if (patch.videoGenerationType === 'frame') {
         patch.referenceImages = [];
       } else {
@@ -2200,7 +2200,7 @@ export function VideoToolbar({
       onVideoGenerationTypeChange(node.id, value);
       return;
     }
-    const patch = { videoGenerationType: value, status: 'idle' };
+    const patch = { videoGenerationType: value, videoGenTypeMigrated: 1, status: 'idle' };
     const clearMediaRefs = isSeedance || isSeedance25Gz;
     if (value === 'frame') {
       patch.referenceImages = [];
@@ -2499,22 +2499,6 @@ export function VideoToolbar({
           />
         ) : null}
       </div>
-      {showFrameReferenceModeSwitch ? (
-        <OptionSegment
-          title="生成类型"
-          value={veoGenerationType}
-          options={VEO_GENERATION_TYPE_OPTIONS}
-          onChange={applyVeoGenerationTypeChange}
-        />
-      ) : null}
-      {showSeedanceStyleModeSwitch ? (
-        <OptionSegment
-          title="输入模式"
-          value={seedanceStyleInputMode}
-          options={SEEDANCE_INPUT_MODE_OPTIONS}
-          onChange={applySeedanceInputModeChange}
-        />
-      ) : null}
       {isFlux3 ? (
         <OptionSegment
           title="生成模式"

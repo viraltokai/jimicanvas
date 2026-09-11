@@ -5,6 +5,8 @@ import {
   inferVideoFamily,
   getVideoReferenceImageMax,
   normalizeSeedanceInputMode,
+  getVideoReferenceVideoMax,
+  resolveVideoGenerationType,
   VIDEO_FRAME_IMAGE_CONNECTION_MAX,
 } from './constants';
 import { isDefaultDemoImageUrl, getImageNodeDisplayImages } from './imageNodeLayout';
@@ -230,7 +232,7 @@ export function resolveVideoPrompt(node, nodes = [], connections = []) {
 export function isVideoFrameImageMode(node) {
   const family = inferVideoFamily(node);
   if (family === 'veo' || family === 'minimax') {
-    return (node?.videoGenerationType || 'frame') === 'frame';
+    return resolveVideoGenerationType(node) === 'frame';
   }
   if (family === 'flux3') {
     return String(node?.videoFlux3Mode || 't2v') === 'flf';
@@ -244,7 +246,7 @@ export function isVideoFrameImageMode(node) {
 export function isVideoReferenceImageMode(node) {
   const family = inferVideoFamily(node);
   if (family === 'veo' || family === 'minimax') {
-    return (node?.videoGenerationType || 'frame') === 'reference';
+    return resolveVideoGenerationType(node) === 'reference';
   }
   if (family === 'flux3') {
     const mode = String(node?.videoFlux3Mode || 't2v');
@@ -266,7 +268,7 @@ export function getVideoImageConnectionMax(node) {
     return getVideoReferenceImageMax(node);
   }
   if (family === 'veo' || family === 'minimax') {
-    if ((node?.videoGenerationType || 'frame') === 'frame') {
+    if (resolveVideoGenerationType(node) === 'frame') {
       return VIDEO_FRAME_IMAGE_CONNECTION_MAX;
     }
     return getVideoReferenceImageMax(node);
@@ -429,6 +431,32 @@ export function resolveVideoReferenceImages(node, nodes = [], connections = []) 
 export function resolveVideoReferenceVideos(node, nodes = [], connections = [], maxAssetCount = Infinity) {
   const videoInputLinks = getVideoInputLinks(node.id, nodes, connections);
   return resolveVideoToolbarReferenceVideos(node, videoInputLinks, maxAssetCount).filter((item) => item.url);
+}
+
+export function resolveVideoToolbarVideos(node, videoInputLinks = []) {
+  const max = getVideoReferenceVideoMax(node);
+  if (max <= 0) return [];
+  return resolveVideoToolbarReferenceVideos(node, videoInputLinks, max);
+}
+
+export function validateVideoVideoConnection(videoNode, videoInputLinks = []) {
+  if (!videoNode || videoNode.type !== 'video') return null;
+
+  const family = inferVideoFamily(videoNode);
+  const max = getVideoReferenceVideoMax(videoNode);
+  if (max <= 0) {
+    if (family === 'sora') return 'Sora 暂不支持参考视频，连线不会传入生成参数';
+    if (family === 'veo') return 'VEO 暂不支持参考视频，连线不会传入生成参数';
+    if (family === 'grok') return 'Grok 暂不支持参考视频，连线不会传入生成参数';
+    return '当前模型暂不支持参考视频';
+  }
+  if (family === 'seedance' && isVideoFrameImageMode(videoNode)) {
+    return '首尾帧模式不可添加参考视频';
+  }
+  if (videoInputLinks.length >= max) {
+    return `参考视频最多连接 ${max} 个`;
+  }
+  return null;
 }
 
 export function hasVideoPromptSource(node, nodes = [], connections = []) {

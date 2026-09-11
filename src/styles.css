@@ -2645,6 +2645,29 @@ textarea {
   background: var(--node-inner-bg, rgba(0, 0, 0, 0.35));
 }
 
+.video-generation-type-row {
+  width: 100%;
+}
+
+.video-generation-type-row .option-segment {
+  gap: 4px;
+}
+
+.video-generation-type-row .option-segment-title {
+  font-size: 11px;
+}
+
+.video-generation-type-row .option-segment-control {
+  min-height: 36px;
+  padding: 4px;
+}
+
+.video-generation-type-row .option-segment-button {
+  min-height: 28px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
 .video-toolbar-seedance {
   width: max(100%, 640px);
   max-width: min(820px, calc(100vw - 48px));

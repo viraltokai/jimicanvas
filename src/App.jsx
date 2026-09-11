@@ -94,6 +94,7 @@ import {
   resolveImageReferenceImages,
   validateVideoImageConnection,
   validateNodeConnection,
+  validateVideoVideoConnection,
 } from './lib/connections';
 import { createSpeech, normalizeAudioUrl, filterAudioFiles, isAudioFile, isAudioAssetRecord } from './lib/audioApi';
 import {
@@ -2516,6 +2517,7 @@ function App() {
               videoReferenceVideos: resolveVideoReferenceVideos(current, docNodes, docConnections),
               videoFirstFrame: veoFrames.firstFrame,
               videoLastFrame: veoFrames.lastFrame,
+              videoReferenceVideos: resolveVideoReferenceVideos(current, docNodes, docConnections),
             };
           }
           return current;
@@ -3121,6 +3123,7 @@ function App() {
           videoReferenceVideos: resolveVideoReferenceVideos(currentNode, nodes, connections),
           videoFirstFrame: veoFrames.firstFrame,
           videoLastFrame: veoFrames.lastFrame,
+          videoReferenceVideos: resolveVideoReferenceVideos(currentNode, nodes, connections),
         },
         {
           token,
@@ -3181,7 +3184,9 @@ function App() {
       }
     }
 
-    const hasVideoRefs = getVideoInputLinks(node.id, nodes, connections).length > 0;
+    const hasVideoRefs =
+      getVideoInputLinks(node.id, nodes, connections).length > 0 ||
+      (Array.isArray(node.videoReferenceVideos) && node.videoReferenceVideos.length > 0);
     const cost = calculateEstimatedCost(pricingList, node, userQuota.profile, { hasVideoRefs });
     setPendingTaskConfirm({
       type: 'video',
@@ -4204,20 +4209,18 @@ function App() {
     const family = inferVideoFamily(node);
     const patch = {
       videoGenerationType: value,
+      videoGenTypeMigrated: 1,
       status: 'idle',
     };
 
     if (value === 'frame') {
       patch.referenceImages = [];
-      if (family === 'seedance' || family === 'seedance25gz') {
-        patch.videoReferenceVideos = [];
-        patch.videoReferenceAudios = [];
-      }
+      patch.videoReferenceVideos = [];
+      patch.videoReferenceAudios = [];
     } else if (value === 'reference') {
       patch.videoFirstFrame = null;
       patch.videoLastFrame = null;
     } else {
-      // t2v / other
       patch.referenceImages = [];
       patch.videoFirstFrame = null;
       patch.videoLastFrame = null;
@@ -4234,6 +4237,15 @@ function App() {
       if (removed > 0) {
         showCopyNotice(`首尾帧模式最多连接 ${VIDEO_FRAME_IMAGE_CONNECTION_MAX} 张图片，已保留前 ${VIDEO_FRAME_IMAGE_CONNECTION_MAX} 张`);
       }
+      updateActiveCanvas((doc) => {
+        const videoLinks = getVideoInputLinks(nodeId, doc.nodes, doc.connections);
+        if (videoLinks.length === 0) return doc;
+        const removeLinkIds = new Set(videoLinks.map((item) => item.linkId));
+        return {
+          ...doc,
+          connections: doc.connections.filter((link) => !removeLinkIds.has(link.id)),
+        };
+      });
     } else if (value === 't2v') {
       const removed = trimVideoImageConnections(nodeId, 0);
       if (removed > 0) {
@@ -4269,6 +4281,16 @@ function App() {
       !getImageNodeReferenceUrl(fromNode)
     ) {
       showCopyNotice('示例图不能作为图片引用，请先上传或生成真实图片', { tone: 'error' });
+      return;
+    }
+
+    if (fromNode?.type === 'video' && toNode?.type === 'video') {
+      const existingLinks = getVideoInputLinks(toNodeId, nodes, connections);
+      const validationError = validateVideoVideoConnection(toNode, existingLinks);
+      if (validationError) {
+        showCopyNotice(validationError);
+        return;
+      }
     }
 
     updateActiveCanvas((doc) => {

@@ -418,6 +418,7 @@ export async function executeVideoGeneration(
         prompt: promptText,
         settings,
         referenceImages: isVideoReferenceImageMode(node) ? node.referenceImages || [] : [],
+        referenceVideos: node.videoReferenceVideos || [],
         veoFrames:
           family === 'veo' || family === 'minimax' || family === 'flux3'
             ? isVideoFrameImageMode(node)

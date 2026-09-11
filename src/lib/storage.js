@@ -7,6 +7,7 @@ import {
   PENDING_SYSTEM_WORKFLOW_KEY,
   PENDING_WORKFLOW_TEMPLATE_KEY,
   STORAGE_KEY,
+  migrateLegacyVideoGenerationType,
 } from './constants';
 import { normalizeImageUrl } from './imageApi';
 import { normalizeVideoUrl } from './videoApi';
@@ -165,7 +166,31 @@ function sanitizeMediaUrl(value, normalizer) {
 function sanitizeReferenceAsset(asset) {
   if (!asset || typeof asset !== 'object') return null;
   const mediaType = asset.type || 'image';
-  const candidate = asset.uploadedUrl || asset.url || asset.path || '';
+  const candidate = String(asset.uploadedUrl || asset.url || asset.path || '').trim();
+  const assetId = String(asset.assetId || '').trim();
+  const recoveredAsset =
+    candidate.startsWith('asset://')
+      ? candidate
+      : candidate.match(/asset:\/\/([^/?#]+)/)
+        ? `asset://${candidate.match(/asset:\/\/([^/?#]+)/)[1]}`
+        : assetId
+          ? `asset://${assetId}`
+          : '';
+
+  if (recoveredAsset) {
+    return {
+      id: asset.id || assetId || recoveredAsset,
+      assetId: assetId || recoveredAsset.replace(/^asset:\/\//, ''),
+      name: asset.name,
+      url: recoveredAsset,
+      originalUrl: asset.originalUrl || '',
+      previewUrl: asset.previewUrl || '',
+      duration: asset.duration,
+      source: asset.source || 'seedance',
+      type: mediaType,
+    };
+  }
+
   const url =
     mediaType === 'audio'
       ? sanitizeMediaUrl(candidate, normalizeAudioUrl)
@@ -177,6 +202,9 @@ function sanitizeReferenceAsset(asset) {
     id: asset.id,
     name: asset.name,
     url,
+    originalUrl: asset.originalUrl || '',
+    previewUrl: asset.previewUrl || '',
+    duration: asset.duration,
     source: asset.source || 'remote',
     type: mediaType,
   };
@@ -222,6 +250,7 @@ function sanitizeNode(node) {
   }
 
   if (next.type === 'video') {
+    Object.assign(next, migrateLegacyVideoGenerationType(next));
     if (Array.isArray(next.videos)) {
       next.videos = next.videos
         .map((url) => sanitizeMediaUrl(url, normalizeVideoUrl))

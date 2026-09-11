@@ -98,7 +98,8 @@ export const DEFAULT_VIDEO_SIZE = '1280x720';
 export const DEFAULT_VIDEO_RESOLUTION = '720p';
 export const DEFAULT_VIDEO_QUALITY = '720p';
 export const DEFAULT_VIDEO_COUNT = 1;
-export const DEFAULT_VEO_GENERATION_TYPE = 'frame';
+export const DEFAULT_VEO_GENERATION_TYPE = 'reference';
+export const DEFAULT_VIDEO_GENERATION_TYPE = DEFAULT_VEO_GENERATION_TYPE;
 export const VEO_REFERENCE_IMAGE_MAX = 3;
 /** 视频节点首尾帧模式：最多连接的图片节点数 */
 export const VIDEO_FRAME_IMAGE_CONNECTION_MAX = 2;
@@ -132,6 +133,8 @@ export const FLUX3_REF_KEYFRAME_MAX = 10;
 export const VIDEO_GENERIC_REFERENCE_MAX = 5;
 /** Gemini Omni 参考图上限 */
 export const OMNI_REFERENCE_IMAGE_MAX = 7;
+/** Gemini Omni 参考视频上限 */
+export const OMNI_REFERENCE_VIDEO_MAX = 1;
 
 export const IMAGE_REFERENCE_LIMITS = {
   nanobanana2: 5,
@@ -171,9 +174,10 @@ export const AUDIO_SPEED_OPTIONS = [
 ];
 
 export const VEO_GENERATION_TYPE_OPTIONS = [
+  { value: 'reference', label: '全能参考' },
   { value: 'frame', label: '首尾帧' },
-  { value: 'reference', label: '参考图' },
 ];
+export const VIDEO_GENERATION_TYPE_OPTIONS = VEO_GENERATION_TYPE_OPTIONS;
 
 /** Seedance 输入模式：参考图 / 文生 / 首尾帧互斥 */
 export const SEEDANCE_INPUT_MODE_OPTIONS = [
@@ -182,7 +186,7 @@ export const SEEDANCE_INPUT_MODE_OPTIONS = [
   { value: 'frame', label: '首尾帧' },
 ];
 
-export const DEFAULT_SEEDANCE_INPUT_MODE = 'frame';
+export const DEFAULT_SEEDANCE_INPUT_MODE = 'reference';
 
 export function normalizeSeedanceInputMode(value, node) {
   if (SEEDANCE_INPUT_MODE_OPTIONS.some((option) => option.value === value)) {
@@ -672,14 +676,22 @@ export function defaultSoraSize(orientation) {
   return resolved === 'portrait' ? '720x1280' : '1280x720';
 }
 
-export function buildManxueApiModel(resolution = '720p') {
-  const map = {
-    '720p': 'sd2_mx_720p',
-    '1080p': 'sd2_mx_1080p',
-    '2k': 'sd2_mx_2k',
-    '4k': 'sd2_mx_4k',
-  };
-  return map[String(resolution).toLowerCase()] || 'sd2_mx_720p';
+export function buildManxueApiModel(resolution = '720p', options = {}) {
+  const hasVideoRefs = Boolean(options.hasVideoRefs);
+  const map = hasVideoRefs
+    ? {
+        '720p': 'sd2_mx_video_720p',
+        '1080p': 'sd2_mx_video_1080p',
+        '2k': 'sd2_mx_video_2k',
+        '4k': 'sd2_mx_video_4k',
+      }
+    : {
+        '720p': 'sd2_mx_720p',
+        '1080p': 'sd2_mx_1080p',
+        '2k': 'sd2_mx_2k',
+        '4k': 'sd2_mx_4k',
+      };
+  return map[String(resolution).toLowerCase()] || (hasVideoRefs ? 'sd2_mx_video_720p' : 'sd2_mx_720p');
 }
 
 export function normalizeSeedanceUiModel(model = '') {
@@ -822,6 +834,13 @@ export function getVideoReferenceImageMax(node = {}) {
   if (family === 'minimax') return MINIMAX_REFERENCE_IMAGE_MAX;
   if (family === 'wan30') return WAN30_REF_IMAGE_MAX;
   return VIDEO_GENERIC_REFERENCE_MAX;
+}
+
+export function getVideoReferenceVideoMax(node = {}) {
+  const family = inferVideoFamily(node);
+  if (family === 'seedance') return SEEDANCE_REF_VIDEO_MAX;
+  if (family === 'omni') return OMNI_REFERENCE_VIDEO_MAX;
+  return 0;
 }
 
 export function getVideoFamilyConfig(family = DEFAULT_VIDEO_FAMILY) {
@@ -972,10 +991,34 @@ export function getDefaultVideoDuration(family = DEFAULT_VIDEO_FAMILY) {
   return getVideoFamilyConfig(family).defaultDuration || DEFAULT_VIDEO_DURATION;
 }
 
+export function supportsVideoGenerationType(family) {
+  return family === 'veo' || family === 'minimax' || family === 'seedance' || family === 'seedance25gz';
+}
+
 export function normalizeVeoGenerationType(value) {
   return VEO_GENERATION_TYPE_OPTIONS.some((option) => option.value === value)
     ? value
     : DEFAULT_VEO_GENERATION_TYPE;
+}
+
+export function resolveVideoGenerationType(node = {}) {
+  const family = inferVideoFamily(node);
+  if (!supportsVideoGenerationType(family)) return undefined;
+  return normalizeVeoGenerationType(node.videoGenerationType);
+}
+
+/** 一次性把旧默认「首尾帧」迁成全能参考；已选手尾帧的节点保持首尾帧。 */
+export function migrateLegacyVideoGenerationType(node) {
+  if (!node || node.type !== 'video' || node.videoGenTypeMigrated) return node;
+  const next = { ...node, videoGenTypeMigrated: 1 };
+  if (next.videoFirstFrame || next.videoLastFrame) {
+    if (supportsVideoGenerationType(inferVideoFamily(next))) {
+      next.videoGenerationType = 'frame';
+    }
+    return next;
+  }
+  next.videoGenerationType = DEFAULT_VIDEO_GENERATION_TYPE;
+  return next;
 }
 
 export function normalizeVideoModelSettings({
