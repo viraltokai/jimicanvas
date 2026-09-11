@@ -1,4 +1,10 @@
-import { DEFAULT_VIDEO_FAMILY, DEFAULT_VIDEO_ROUTE, OMNI_REFERENCE_IMAGE_MAX } from './constants';
+import {
+  DEFAULT_VIDEO_FAMILY,
+  DEFAULT_VIDEO_ROUTE,
+  OMNI_REFERENCE_IMAGE_MAX,
+  OMNI_REFERENCE_VIDEO_MAX,
+  buildManxueApiModel,
+} from './constants';
 import { requestJimiaigo, requestJimiaigoForm } from './jimiaigoApi';
 import { normalizeImageUrl, uploadAsset } from './imageApi';
 import {
@@ -36,6 +42,7 @@ export function normalizeVideoUrl(url) {
     value.startsWith('data:video') ||
     value.startsWith('data:') ||
     value.startsWith('blob:') ||
+    value.startsWith('asset://') ||
     /^https?:\/\//.test(value)
   ) {
     return value;
@@ -147,7 +154,21 @@ async function createVeoTask({ token, prompt, settings, referenceImages, veoFram
   };
 }
 
-async function createOmniTask({ token, prompt, settings, referenceImages }) {
+function pickReferenceVideoUrl(item) {
+  if (!item) return '';
+  if (typeof item === 'string') return normalizeVideoUrl(item);
+  return normalizeVideoUrl(item.url || item.originalUrl || item.previewUrl || item.uploadedUrl || '');
+}
+
+function buildReferenceVideoUrls(referenceVideos = [], maxCount = 0) {
+  return (referenceVideos || [])
+    .map(pickReferenceVideoUrl)
+    .filter((url) => url && !url.startsWith('asset://'))
+    .slice(0, Math.max(0, maxCount));
+}
+
+async function createOmniTask({ token, prompt, settings, referenceImages, referenceVideos = [] }) {
+  const videoUrls = buildReferenceVideoUrls(referenceVideos, OMNI_REFERENCE_VIDEO_MAX);
   const data = await requestJson('/api/video/gemini/create', {
     token,
     method: 'POST',
@@ -158,6 +179,11 @@ async function createOmniTask({ token, prompt, settings, referenceImages }) {
       resolution: settings.resolution,
       aspect_ratio: settings.ratio,
       image_urls: buildReferenceImageUrls(referenceImages).slice(0, OMNI_REFERENCE_IMAGE_MAX),
+      video_urls: videoUrls,
+      video_ref_duration: (referenceVideos || []).reduce(
+        (sum, item) => sum + (Number(item?.duration) || 0),
+        0
+      ),
     },
   });
 
@@ -169,11 +195,29 @@ async function createOmniTask({ token, prompt, settings, referenceImages }) {
   return { taskId: String(taskId), provider: 'omni', queryModel: settings.model };
 }
 
+function recoverSeedanceAssetUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('asset://')) return raw;
+  const mangled = raw.match(/asset:\/\/([^/?#]+)/);
+  if (mangled) return `asset://${mangled[1]}`;
+  return '';
+}
+
 export function pickSeedanceAssetUrl(asset) {
   if (!asset) return '';
-  const url = String(asset.url || asset.assetUrl || '').trim();
-  if (url.startsWith('asset://')) return url;
-  if (asset.assetId) return `asset://${asset.assetId}`;
+  if (typeof asset === 'string') {
+    return recoverSeedanceAssetUrl(asset) || normalizeVideoUrl(asset);
+  }
+  const assetId = String(asset.assetId || '').trim();
+  const recovered =
+    recoverSeedanceAssetUrl(asset.url) ||
+    recoverSeedanceAssetUrl(asset.assetUrl) ||
+    recoverSeedanceAssetUrl(asset.uploadedUrl);
+  if (recovered) return recovered;
+  if (assetId) return `asset://${assetId}`;
+  const fallback = String(asset.url || asset.originalUrl || asset.previewUrl || asset.uploadedUrl || '').trim();
+  if (/^https?:\/\//.test(fallback) || fallback.startsWith('/')) return fallback;
   return '';
 }
 
@@ -342,12 +386,16 @@ async function createSeedanceManxueTask({
   const referenceAudios = (seedanceInputs.referenceAudios || [])
     .map(pickSeedanceAssetUrl)
     .filter(Boolean);
+  const hasVideoRefs = referenceVideos.length > 0;
+  const apiModel = hasVideoRefs
+    ? buildManxueApiModel(settings.resolution, { hasVideoRefs: true })
+    : settings.apiModel || settings.model;
 
   const data = await requestJson('/api/video/sd2manxue/create', {
     token,
     method: 'POST',
     body: {
-      model: settings.apiModel || settings.model,
+      model: apiModel,
       prompt,
       duration: Number(settings.duration) || 5,
       ratio: settings.ratio || '16:9',
@@ -401,18 +449,31 @@ export async function createVideoGenerationTask({
   prompt,
   settings,
   referenceImages = [],
+  referenceVideos = [],
   veoFrames = {},
   seedanceInputs = {},
 }) {
   const family = settings.family || DEFAULT_VIDEO_FAMILY;
+  const nextSeedanceInputs = {
+    ...seedanceInputs,
+    referenceVideos: seedanceInputs.referenceVideos?.length
+      ? seedanceInputs.referenceVideos
+      : referenceVideos,
+  };
 
   switch (family) {
     case 'veo':
       return createVeoTask({ token, prompt, settings, referenceImages, veoFrames });
     case 'omni':
-      return createOmniTask({ token, prompt, settings, referenceImages });
+      return createOmniTask({ token, prompt, settings, referenceImages, referenceVideos });
     case 'seedance':
-      return createSeedanceManxueTask({ token, prompt, settings, referenceImages, seedanceInputs });
+      return createSeedanceManxueTask({
+        token,
+        prompt,
+        settings,
+        referenceImages,
+        seedanceInputs: nextSeedanceInputs,
+      });
     case 'grok':
       return createGrokTask({ token, prompt, settings, referenceImages });
     case 'sora':

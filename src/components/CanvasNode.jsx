@@ -39,7 +39,8 @@ import {
   getImageQualityOptions,
   normalizeImageModelSettings,
   normalizeVideoModelSettings,
-  VEO_GENERATION_TYPE_OPTIONS,
+  VIDEO_GENERATION_TYPE_OPTIONS,
+  supportsVideoGenerationType,
   DEFAULT_IMAGE_URL,
   DEFAULT_VIDEO_URL,
   PLACEHOLDER_IMAGE,
@@ -74,6 +75,7 @@ import {
   resolveNoteVideoInputUrls,
   resolveVideoToolbarFrames,
   resolveVideoToolbarReferences,
+  resolveVideoToolbarVideos,
 } from '../lib/connections';
 import {
   buildImageNodeLayoutPatch,
@@ -1307,19 +1309,12 @@ export function VideoToolbar({
     firstConnectionLinkId,
     lastConnectionLinkId,
   } = resolveVideoToolbarFrames(node, imageInputLinks);
-  const referenceVideos = Array.isArray(node.videoReferenceVideos) ? node.videoReferenceVideos : [];
+  const assetReferenceVideos = Array.isArray(node.videoReferenceVideos) ? node.videoReferenceVideos : [];
+  const referenceVideos = resolveVideoToolbarVideos(node, videoInputLinks);
   const referenceAudios = Array.isArray(node.videoReferenceAudios) ? node.videoReferenceAudios : [];
   const family = inferVideoFamily(node);
   const isVeo = family === 'veo';
   const isSeedance = family === 'seedance';
-  const veoGenerationType = node.videoGenerationType || 'frame';
-  const showVeoReferenceImages = isVeo && veoGenerationType === 'reference';
-  const seedanceReferenceMode = isSeedance && assetReferences.length > 0;
-  const showSeedanceReferenceImages = seedanceReferenceMode;
-  const showSeedanceFrames = isSeedance && !seedanceReferenceMode;
-  const hasSeedanceFrames = showSeedanceFrames && Boolean(resolvedFirstFrame || resolvedLastFrame);
-  const hasSeedanceReferenceImages = seedanceReferenceMode && resolvedReferences.length > 0;
-  const showSeedanceReferenceMedia = isSeedance && !hasSeedanceFrames;
   const showGenericReferenceImages = !isVeo && !isSeedance;
   const model = node.videoModel || getVideoModelOptions(family)[0]?.value;
   const modelOptions = getVideoModelOptions(family);
@@ -1340,6 +1335,17 @@ export function VideoToolbar({
     count: node.videoCount,
     route: node.videoRoute,
   });
+  const generationType = supportsVideoGenerationType(family)
+    ? normalizedSettings.generationType || 'reference'
+    : undefined;
+  const showVeoReferenceImages = isVeo && generationType === 'reference';
+  const showVeoFrames = isVeo && generationType === 'frame';
+  const seedanceReferenceMode = isSeedance && generationType === 'reference';
+  const showSeedanceReferenceImages = seedanceReferenceMode;
+  const showSeedanceFrames = isSeedance && generationType === 'frame';
+  const hasSeedanceFrames = showSeedanceFrames && Boolean(resolvedFirstFrame || resolvedLastFrame);
+  const hasSeedanceReferenceImages = seedanceReferenceMode && resolvedReferences.length > 0;
+  const showSeedanceReferenceMedia = seedanceReferenceMode;
 
   const resolutionValue =
     family === 'sora'
@@ -1351,7 +1357,7 @@ export function VideoToolbar({
   const resolutionTitle = family === 'grok' ? '画质' : '分辨率';
   const genericReferenceMax = getVideoReferenceImageMax(node);
   const referencePreviewUrls = getReferencePreviewUrls(resolvedReferences);
-  const hasVideoRefs = videoInputLinks.length > 0;
+  const hasVideoRefs = referenceVideos.length > 0;
   const videoCost = pricingList ? calculateEstimatedCost(pricingList, node, userProfile, { hasVideoRefs }) : 0;
 
   function previewReferenceAt(index) {
@@ -1449,8 +1455,10 @@ export function VideoToolbar({
       status: 'idle',
     };
 
-    if (nextFamily === 'veo') {
-      patch.videoGenerationType = nextSettings.generationType;
+    if (supportsVideoGenerationType(nextFamily)) {
+      patch.videoGenerationType = nextSettings.generationType || 'reference';
+      patch.videoFirstFrame = null;
+      patch.videoLastFrame = null;
     } else {
       patch.videoGenerationType = undefined;
     }
@@ -1476,7 +1484,7 @@ export function VideoToolbar({
     });
   }
 
-  function applyVeoGenerationTypeChange(value) {
+  function applyGenerationTypeChange(value) {
     if (onVideoGenerationTypeChange) {
       onVideoGenerationTypeChange(node.id, value);
       return;
@@ -1484,6 +1492,8 @@ export function VideoToolbar({
     const patch = { videoGenerationType: value, status: 'idle' };
     if (value === 'frame') {
       patch.referenceImages = [];
+      patch.videoReferenceVideos = [];
+      patch.videoReferenceAudios = [];
     } else {
       patch.videoFirstFrame = null;
       patch.videoLastFrame = null;
@@ -1505,6 +1515,24 @@ export function VideoToolbar({
     );
     if (assetIndex >= 0) {
       onRemoveImageReference(node.id, assetIndex);
+    }
+  }
+
+  function removeResolvedSeedanceVideoAt(index) {
+    const item = referenceVideos[index];
+    if (!item) return;
+    if (item.source === 'connection' && item.linkId) {
+      onRemoveTextReference(item.linkId);
+      return;
+    }
+    const assetIndex = assetReferenceVideos.findIndex(
+      (video) =>
+        (item.id && video.id === item.id) ||
+        (item.assetId && video.assetId === item.assetId) ||
+        (item.url && video.url === item.url)
+    );
+    if (assetIndex >= 0) {
+      onRemoveSeedanceMedia(node.id, 'video', assetIndex);
     }
   }
 
@@ -1637,14 +1665,6 @@ export function VideoToolbar({
           onChange={(value) => onUpdateNode(node.id, { videoCount: Number(value) })}
         />
       </div>
-      {isVeo ? (
-        <OptionSegment
-          title="生成类型"
-          value={normalizedSettings.generationType || 'frame'}
-          options={VEO_GENERATION_TYPE_OPTIONS}
-          onChange={applyVeoGenerationTypeChange}
-        />
-      ) : null}
       {shareRatioDurationRow ? (
         <div className="settings-options-row">
           {ratioSegment}
@@ -1659,6 +1679,15 @@ export function VideoToolbar({
     </div>
   );
 
+  const generationTypeSegment = supportsVideoGenerationType(family) ? (
+    <OptionSegment
+      title="参考类型"
+      value={generationType || 'reference'}
+      options={VIDEO_GENERATION_TYPE_OPTIONS}
+      onChange={applyGenerationTypeChange}
+    />
+  ) : null;
+
   if (variant === 'modal') {
     return (
       <div
@@ -1668,6 +1697,7 @@ export function VideoToolbar({
       >
         <div className="modal-two-columns">
           <div className="modal-left-column">
+            {generationTypeSegment}
             {showVeoReferenceImages || showSeedanceReferenceImages || showGenericReferenceImages ? (
               <div
                 className={`image-reference-row image-reference-row-top ${showSeedanceReferenceImages ? 'seedance-reference-row' : ''}`}
@@ -1764,10 +1794,34 @@ export function VideoToolbar({
                 </div>
               </div>
             ) : null}
+            {family === 'omni' && referenceVideos.length > 0 ? (
+              <div className="image-reference-row">
+                <span className="image-reference-label">参考视频</span>
+                <div className="image-reference-list">
+                  {referenceVideos.map((video, index) => (
+                    <div className="text-reference-chip" key={video.id || video.url || index}>
+                      <Film size={14} />
+                      <span className="text-reference-preview" title={video.name || '参考视频'}>
+                        {video.name || '参考视频'}
+                      </span>
+                      {video.source === 'connection' && video.linkId ? (
+                        <button
+                          type="button"
+                          onClick={() => onRemoveTextReference(video.linkId)}
+                          title="移除视频引用并断开连线"
+                        >
+                          <X size={11} />
+                        </button>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
           <div className="modal-right-column">
             {videoSettingsPanels}
-            {isVeo && veoGenerationType === 'frame' ? (
+            {showVeoFrames ? (
               <div className="veo-frame-row">
                 <VeoFrameSlot
                   label="首帧"
@@ -1817,6 +1871,37 @@ export function VideoToolbar({
                       onOpenAssetLibrary(node.id, 'seedance-last');
                     }}
                     onClear={clearResolvedLastFrame}
+                  />
+                </div>
+              </div>
+            ) : null}
+            {showSeedanceReferenceMedia ? (
+              <div className="seedance-section seedance-media-section">
+                <div className="seedance-section-title">参考视频 / 音频</div>
+                <div className="seedance-media-row">
+                  <SeedanceMediaPanel
+                    label="参考视频"
+                    icon={Film}
+                    mediaType="video"
+                    items={referenceVideos}
+                    maxCount={SEEDANCE_REF_VIDEO_MAX}
+                    disabled={hasSeedanceFrames}
+                    disabledHint={hasSeedanceFrames ? '已选首尾帧，不可添加参考视频' : ''}
+                    isRunning={isRunning}
+                    onPick={() => onOpenAssetLibrary(node.id, 'seedance-ref-video')}
+                    onRemove={removeResolvedSeedanceVideoAt}
+                  />
+                  <SeedanceMediaPanel
+                    label="参考音频"
+                    icon={Headphones}
+                    mediaType="audio"
+                    items={referenceAudios}
+                    maxCount={SEEDANCE_REF_AUDIO_MAX}
+                    disabled={hasSeedanceFrames}
+                    disabledHint={hasSeedanceFrames ? '已选首尾帧，不可添加参考音频' : ''}
+                    isRunning={isRunning}
+                    onPick={() => onOpenAssetLibrary(node.id, 'seedance-ref-audio')}
+                    onRemove={(index) => onRemoveSeedanceMedia(node.id, 'audio', index)}
                   />
                 </div>
               </div>
@@ -1905,6 +1990,7 @@ export function VideoToolbar({
       className={`node-bottom-toolbar image-toolbar video-toolbar ${isSeedance ? 'video-toolbar-seedance' : ''} ${variant === 'modal' ? 'node-settings-toolbar-modal' : ''}`}
       onPointerDown={(event) => event.stopPropagation()}
     >
+      {generationTypeSegment}
       {variant === 'dock' ? (
         resolvedReferences.length > 0 && !isSeedance ? (
           <div className="image-reference-row image-reference-row-top image-reference-row-chips-only">
@@ -1977,19 +2063,7 @@ export function VideoToolbar({
                   />
                 </div>
               </div>
-            ) : (
-              <div className="seedance-above-prompt">
-                <div className="seedance-above-row">
-                  <VeoFrameSlot
-                    label="参考图"
-                    image={undefined}
-                    disabled={isRunning}
-                    onPick={() => onOpenAssetLibrary(node.id, 'seedance-reference')}
-                    onClear={() => {}}
-                  />
-                </div>
-              </div>
-            )}
+            ) : null}
           </>
         ) : null
       ) : (
@@ -2112,6 +2186,30 @@ export function VideoToolbar({
           </div>
         </div>
       ) : null}
+      {family === 'omni' && referenceVideos.length > 0 ? (
+        <div className="image-reference-row">
+          <span className="image-reference-label">参考视频</span>
+          <div className="image-reference-list">
+            {referenceVideos.map((video, index) => (
+              <div className="text-reference-chip" key={video.id || video.url || index}>
+                <Film size={14} />
+                <span className="text-reference-preview" title={video.name || '参考视频'}>
+                  {video.name || '参考视频'}
+                </span>
+                {video.source === 'connection' && video.linkId ? (
+                  <button
+                    type="button"
+                    onClick={() => onRemoveTextReference(video.linkId)}
+                    title="移除视频引用并断开连线"
+                  >
+                    <X size={11} />
+                  </button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
       {family !== 'seedance' && family !== 'sora' ? (
         <ReferencePromptInput
           value={node.prompt || ''}
@@ -2150,7 +2248,7 @@ export function VideoToolbar({
         )
       )}
 
-      {isVeo && veoGenerationType === 'frame' ? (
+      {showVeoFrames ? (
         <div className="veo-frame-row">
           <VeoFrameSlot
             label="首帧"
@@ -2173,8 +2271,37 @@ export function VideoToolbar({
           />
         </div>
       ) : null}
-
-
+      {showSeedanceReferenceMedia ? (
+        <div className="seedance-section seedance-media-section">
+          <div className="seedance-section-title">参考视频 / 音频</div>
+          <div className="seedance-media-row">
+            <SeedanceMediaPanel
+              label="参考视频"
+              icon={Film}
+              mediaType="video"
+              items={referenceVideos}
+              maxCount={SEEDANCE_REF_VIDEO_MAX}
+              disabled={hasSeedanceFrames}
+              disabledHint={hasSeedanceFrames ? '已选首尾帧，不可添加参考视频' : ''}
+              isRunning={isRunning}
+              onPick={() => onOpenAssetLibrary(node.id, 'seedance-ref-video')}
+              onRemove={removeResolvedSeedanceVideoAt}
+            />
+            <SeedanceMediaPanel
+              label="参考音频"
+              icon={Headphones}
+              mediaType="audio"
+              items={referenceAudios}
+              maxCount={SEEDANCE_REF_AUDIO_MAX}
+              disabled={hasSeedanceFrames}
+              disabledHint={hasSeedanceFrames ? '已选首尾帧，不可添加参考音频' : ''}
+              isRunning={isRunning}
+              onPick={() => onOpenAssetLibrary(node.id, 'seedance-ref-audio')}
+              onRemove={(index) => onRemoveSeedanceMedia(node.id, 'audio', index)}
+            />
+          </div>
+        </div>
+      ) : null}
 
       <div className="node-bottom-actions image-bottom-actions">
         {variant !== 'modal' && (

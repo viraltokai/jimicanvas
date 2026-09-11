@@ -72,11 +72,13 @@ import {
   resolveVideoPrompt,
   resolveAudioPrompt,
   resolveVideoReferenceImages,
+  resolveVideoReferenceVideos,
   resolveVideoGenerationFrames,
   resolveVideoToolbarFrames,
   resolveVideoToolbarReferences,
   resolveImageReferenceImages,
   validateVideoImageConnection,
+  validateVideoVideoConnection,
 } from './lib/connections';
 import { createSpeech, normalizeAudioUrl, filterAudioFiles, isAudioFile, isAudioAssetRecord } from './lib/audioApi';
 import {
@@ -1920,6 +1922,7 @@ function App() {
               referenceImages: resolveVideoReferenceImages(current, docNodes, docConnections),
               videoFirstFrame: veoFrames.firstFrame,
               videoLastFrame: veoFrames.lastFrame,
+              videoReferenceVideos: resolveVideoReferenceVideos(current, docNodes, docConnections),
             };
           }
           return current;
@@ -2406,6 +2409,7 @@ function App() {
           referenceImages: resolveVideoReferenceImages(currentNode, nodes, connections),
           videoFirstFrame: veoFrames.firstFrame,
           videoLastFrame: veoFrames.lastFrame,
+          videoReferenceVideos: resolveVideoReferenceVideos(currentNode, nodes, connections),
         },
         {
           token,
@@ -2452,7 +2456,9 @@ function App() {
       return runVideoGenerationActual(node, mode);
     }
 
-    const hasVideoRefs = getVideoInputLinks(node.id, nodes, connections).length > 0;
+    const hasVideoRefs =
+      getVideoInputLinks(node.id, nodes, connections).length > 0 ||
+      (Array.isArray(node.videoReferenceVideos) && node.videoReferenceVideos.length > 0);
     const cost = calculateEstimatedCost(pricingList, node, userQuota.profile, { hasVideoRefs });
     setPendingTaskConfirm({
       type: 'video',
@@ -3246,7 +3252,7 @@ function App() {
       videoGenerationType: value,
       status: 'idle',
       ...(value === 'frame'
-        ? { referenceImages: [] }
+        ? { referenceImages: [], videoReferenceVideos: [], videoReferenceAudios: [] }
         : { videoFirstFrame: null, videoLastFrame: null }),
     });
 
@@ -3267,6 +3273,15 @@ function App() {
     if (fromNode?.type === 'image' && toNode?.type === 'video') {
       const existingLinks = getImageInputLinks(toNodeId, nodes, connections);
       const validationError = validateVideoImageConnection(toNode, existingLinks);
+      if (validationError) {
+        showCopyNotice(validationError);
+        return;
+      }
+    }
+
+    if (fromNode?.type === 'video' && toNode?.type === 'video') {
+      const existingLinks = getVideoInputLinks(toNodeId, nodes, connections);
+      const validationError = validateVideoVideoConnection(toNode, existingLinks);
       if (validationError) {
         showCopyNotice(validationError);
         return;

@@ -4,6 +4,8 @@ import {
   getImageReferenceMax,
   inferVideoFamily,
   getVideoReferenceImageMax,
+  getVideoReferenceVideoMax,
+  resolveVideoGenerationType,
   VIDEO_FRAME_IMAGE_CONNECTION_MAX,
 } from './constants';
 import { isDefaultDemoImageUrl, getImageNodeDisplayImages } from './imageNodeLayout';
@@ -212,15 +214,7 @@ export function resolveVideoPrompt(node, nodes = [], connections = []) {
 }
 
 export function isVideoFrameImageMode(node) {
-  const family = inferVideoFamily(node);
-  if (family === 'veo') {
-    return (node?.videoGenerationType || 'frame') === 'frame';
-  }
-  if (family === 'seedance') {
-    const refs = Array.isArray(node?.referenceImages) ? node.referenceImages : [];
-    return refs.length === 0;
-  }
-  return false;
+  return resolveVideoGenerationType(node) === 'frame';
 }
 
 export function isVideoReferenceImageMode(node) {
@@ -309,6 +303,26 @@ export function validateVideoImageConnection(videoNode, imageInputLinks = []) {
   return null;
 }
 
+export function validateVideoVideoConnection(videoNode, videoInputLinks = []) {
+  if (!videoNode || videoNode.type !== 'video') return null;
+
+  const family = inferVideoFamily(videoNode);
+  const max = getVideoReferenceVideoMax(videoNode);
+  if (max <= 0) {
+    if (family === 'sora') return 'Sora 暂不支持参考视频，连线不会传入生成参数';
+    if (family === 'veo') return 'VEO 暂不支持参考视频，连线不会传入生成参数';
+    if (family === 'grok') return 'Grok 暂不支持参考视频，连线不会传入生成参数';
+    return '当前模型暂不支持参考视频';
+  }
+  if (family === 'seedance' && resolveVideoGenerationType(videoNode) === 'frame') {
+    return '首尾帧模式下不可添加参考视频';
+  }
+  if (videoInputLinks.length >= max) {
+    return `参考视频最多连接 ${max} 个`;
+  }
+  return null;
+}
+
 export function resolveVideoReferenceImages(node, nodes = [], connections = []) {
   const imageInputLinks = getImageInputLinks(node.id, nodes, connections);
   return resolveVideoToolbarReferences(node, imageInputLinks).map((item) => ({
@@ -318,6 +332,35 @@ export function resolveVideoReferenceImages(node, nodes = [], connections = []) 
     name: item.name,
     source: item.source,
   }));
+}
+
+export function buildVideoConnectedVideoAsset(linkItem) {
+  const url = getVideoNodeReferenceUrl(linkItem.node);
+  if (!url) return null;
+  return {
+    id: `conn-video-${linkItem.linkId}`,
+    linkId: linkItem.linkId,
+    url,
+    previewUrl: url,
+    originalUrl: url,
+    name: formatVideoInputLabel(linkItem.node),
+    source: 'connection',
+    type: 'video',
+    duration: Number(linkItem.node?.duration) || undefined,
+  };
+}
+
+export function resolveVideoToolbarVideos(node, videoInputLinks = []) {
+  const max = getVideoReferenceVideoMax(node);
+  if (max <= 0) return [];
+
+  const assetRefs = Array.isArray(node?.videoReferenceVideos) ? [...node.videoReferenceVideos] : [];
+  const connected = (videoInputLinks || []).map(buildVideoConnectedVideoAsset).filter(Boolean);
+  return dedupeReferenceImages([...connected, ...assetRefs]).slice(0, max);
+}
+
+export function resolveVideoReferenceVideos(node, nodes = [], connections = []) {
+  return resolveVideoToolbarVideos(node, getVideoInputLinks(node.id, nodes, connections));
 }
 
 export function hasVideoPromptSource(node, nodes = [], connections = []) {

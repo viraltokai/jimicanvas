@@ -71,13 +71,22 @@ export function resolveBillingModelName(node, options = {}) {
       return `${model}-${resolution}-${duration}s`;
     }
     if (family === 'seedance') {
-      const map = {
-        '720p': 'sd2_mx_720p',
-        '1080p': 'sd2_mx_1080p',
-        '2k': 'sd2_mx_2k',
-        '4k': 'sd2_mx_4k',
-      };
-      return map[resolution] || 'sd2_mx_720p';
+      const pickedVideos = Array.isArray(node.videoReferenceVideos) ? node.videoReferenceVideos : [];
+      const useVideoModel = hasVideoRefs || pickedVideos.length > 0;
+      const map = useVideoModel
+        ? {
+            '720p': 'sd2_mx_video_720p',
+            '1080p': 'sd2_mx_video_1080p',
+            '2k': 'sd2_mx_video_2k',
+            '4k': 'sd2_mx_video_4k',
+          }
+        : {
+            '720p': 'sd2_mx_720p',
+            '1080p': 'sd2_mx_1080p',
+            '2k': 'sd2_mx_2k',
+            '4k': 'sd2_mx_4k',
+          };
+      return map[resolution] || (useVideoModel ? 'sd2_mx_video_720p' : 'sd2_mx_720p');
     }
     if (family === 'grok') {
       return 'grok_video3';

@@ -411,6 +411,7 @@ export async function executeVideoGeneration(
         prompt: promptText,
         settings,
         referenceImages: node.referenceImages || [],
+        referenceVideos: node.videoReferenceVideos || [],
         veoFrames:
           family === 'veo'
             ? {
