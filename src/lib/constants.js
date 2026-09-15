@@ -115,6 +115,8 @@ export const SEEDANCE25_MODEL = 'seedance-2.5';
 export const SEEDANCE25_GZ_MODEL = 'seedance2.5-gz';
 export const SEEDANCE25_AR_MD_MODEL = 'seedance2.5-md';
 export const SEEDANCE25_AR_30S_MODEL = 'seedance2.5-30s';
+export const SEEDANCE_MD_MODEL = 'seedance2.0-md';
+export const SEEDANCE_MD_REF_IMAGE_MAX = 9;
 export const SEEDANCE25_GZ_REF_VIDEO_MAX = 10;
 export const WAN30_MODEL = 'wan3.0';
 export const WAN30_REF_IMAGE_MAX = 10;
@@ -208,6 +210,7 @@ export const VIDEO_FAMILY_OPTIONS = [
   { value: 'seedance25', label: 'Seedance 2.5' },
   { value: 'seedance25gz', label: 'Seedance 2.5 官方' },
   { value: 'seedance25ar', label: 'Seedance 2.5 AR 特价' },
+  { value: 'seedancemd', label: 'Seedance 2.0 MD' },
   { value: 'flux3', label: 'Flux 3' },
   { value: 'grok', label: 'Grok' },
   { value: 'minimax', label: 'MiniMax H3' },
@@ -220,12 +223,13 @@ export const VIDEO_FAMILY_GROUPS = [
     id: 'seedance',
     label: 'Seedance',
     icon: 'doubao',
-    families: ['seedance', 'seedance25', 'seedance25gz', 'seedance25ar'],
+    families: ['seedance', 'seedance25', 'seedance25gz', 'seedance25ar', 'seedancemd'],
     shortLabels: {
       seedance: '2.0',
       seedance25: '2.5',
       seedance25gz: '官方',
       seedance25ar: 'AR 特价',
+      seedancemd: 'MD',
     },
   },
   {
@@ -456,6 +460,28 @@ export const VIDEO_FAMILY_CONFIG = {
     defaultOrientation: 'landscape',
     maxCount: 1,
     resolutionKey: 'ratio',
+    ratioKey: 'ratio',
+  },
+  seedancemd: {
+    provider: 'seedance2.0-md',
+    models: [{ value: SEEDANCE_MD_MODEL, label: 'Seedance 2.0 MD' }],
+    ratios: [
+      { value: '16:9', label: '16:9' },
+      { value: '9:16', label: '9:16' },
+      { value: '1:1', label: '1:1' },
+      { value: '4:3', label: '4:3' },
+      { value: '3:4', label: '3:4' },
+      { value: '21:9', label: '21:9' },
+    ],
+    durations: [
+      { value: '5', label: '5 秒' },
+      { value: '10', label: '10 秒' },
+      { value: '15', label: '15 秒' },
+    ],
+    defaultDuration: '15',
+    defaultOrientation: 'landscape',
+    maxCount: 1,
+    resolutionKey: null,
     ratioKey: 'ratio',
   },
   flux3: {
@@ -715,6 +741,18 @@ export function isSeedance25ArModel(model = '') {
   );
 }
 
+export function isSeedanceMdModel(model = '') {
+  const value = String(model).toLowerCase().replace(/_/g, '-');
+  return (
+    value === SEEDANCE_MD_MODEL ||
+    value === 'seedancemd' ||
+    value === 'seedance-md' ||
+    value === 'videos-stable' ||
+    value === 'luxvid-video' ||
+    value.includes('seedance2.0-md')
+  );
+}
+
 export function seedance25ArDurationForModel(model = SEEDANCE25_AR_MD_MODEL) {
   const value = String(model).toLowerCase().replace(/_/g, '-');
   return value.includes('30s') ? '30' : '15';
@@ -732,7 +770,7 @@ export function isSeedance25GzModel(model = '') {
 }
 
 export function isSeedance25Model(model = '') {
-  if (isSeedance25GzModel(model) || isSeedance25ArModel(model)) return false;
+  if (isSeedance25GzModel(model) || isSeedance25ArModel(model) || isSeedanceMdModel(model)) return false;
   const value = String(model).toLowerCase().replace(/_/g, '-');
   return (
     value === SEEDANCE25_MODEL ||
@@ -806,6 +844,7 @@ export function inferVideoFamily(node = {}) {
   if (isWan30Model(model)) return 'wan30';
   if (model.includes('minimax') || model.includes('hailuo') || isMiniMaxH3Model(model)) return 'minimax';
   if (model.includes('grok')) return 'grok';
+  if (isSeedanceMdModel(model)) return 'seedancemd';
   if (isSeedance25ArModel(model)) return 'seedance25ar';
   if (isSeedance25GzModel(model)) return 'seedance25gz';
   if (isSeedance25Model(model)) return 'seedance25';
@@ -820,6 +859,7 @@ export function getVideoReferenceImageMax(node = {}) {
   const family = inferVideoFamily(node);
   if (family === 'veo') return VEO_REFERENCE_IMAGE_MAX;
   if (family === 'seedance') return SEEDANCE_REF_IMAGE_MAX;
+  if (family === 'seedancemd') return SEEDANCE_MD_REF_IMAGE_MAX;
   if (family === 'seedance25' || family === 'seedance25gz' || family === 'seedance25ar') {
     return SEEDANCE25_REF_IMAGE_MAX;
   }
@@ -934,7 +974,7 @@ export function isSoraFamilyVisible(soraVisibility) {
 
 export function getVideoResolutionOptions(family, model = '') {
   const config = getVideoFamilyConfig(family);
-  if (family === 'seedance25ar') {
+  if (family === 'seedance25ar' || family === 'seedancemd') {
     return [];
   }
   if (family === 'sora' || family === 'minimax' || family === 'flux3') {
@@ -1075,8 +1115,8 @@ export function normalizeVideoModelSettings({
   let normalizedResolution = resolution;
   if (family === 'sora') {
     normalizedResolution = defaultSoraSize(normalizedRatio);
-  } else if (family === 'minimax' || family === 'flux3' || family === 'seedance25ar') {
-    // MiniMax H3 / Flux 3 / Seedance 2.5 AR 不走 resolution 列表
+  } else if (family === 'minimax' || family === 'flux3' || family === 'seedance25ar' || family === 'seedancemd') {
+    // MiniMax H3 / Flux 3 / Seedance 2.5 AR / Seedance MD 不走 resolution 列表（MD 固定 720p）
     normalizedResolution = undefined;
   } else if (family === 'seedance' && isSeedanceManxueModel(normalizedModel)) {
     const manxueResolutionFromModel = isManxueSeedance && model !== SEEDANCE_MANXUE_MODEL

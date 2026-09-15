@@ -620,6 +620,41 @@ async function createSeedance25ArTask({
   return { taskId: String(taskId), provider: 'seedance-2.5-ar' };
 }
 
+async function createSeedanceMdTask({
+  token,
+  prompt,
+  settings,
+  referenceImages,
+}) {
+  const allowedRatios = ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'];
+  const ratio = allowedRatios.includes(settings.ratio) ? settings.ratio : '16:9';
+  const durationOptions = [5, 10, 15];
+  const rawDuration = Number(settings.duration);
+  const duration = durationOptions.includes(rawDuration) ? rawDuration : 15;
+  const images = buildReferenceImageUrls(referenceImages).slice(0, 9);
+
+  const data = await requestJson('/api/video/luxvid-md/create', {
+    token,
+    method: 'POST',
+    body: {
+      model: 'seedance2.0-md',
+      prompt,
+      duration,
+      ratio,
+      resolution: '720p',
+      referenceImages: images,
+      reference_image_urls: images,
+    },
+  });
+
+  const taskId = extractTaskId(data) || data?.task_id;
+  if (!taskId) {
+    throw new Error('Seedance MD 任务创建成功，但未返回任务 ID');
+  }
+
+  return { taskId: String(taskId), provider: 'seedance2.0-md' };
+}
+
 async function createFlux3Task({
   token,
   prompt,
@@ -819,6 +854,8 @@ export async function createVideoGenerationTask({
       return createSeedance25GzTask({ token, prompt, settings, referenceImages, seedanceInputs: nextSeedanceInputs });
     case 'seedance25ar':
       return createSeedance25ArTask({ token, prompt, settings, referenceImages });
+    case 'seedancemd':
+      return createSeedanceMdTask({ token, prompt, settings, referenceImages });
     case 'flux3':
       return createFlux3Task({ token, prompt, settings, referenceImages, veoFrames });
     case 'grok':

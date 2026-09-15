@@ -1951,6 +1951,7 @@ export function VideoToolbar({
   const isSeedance25 = family === 'seedance25';
   const isSeedance25Gz = family === 'seedance25gz';
   const isSeedance25Ar = family === 'seedance25ar';
+  const isSeedanceMd = family === 'seedancemd';
   const isFlux3 = family === 'flux3';
   const isMinimax = family === 'minimax';
   const isWan30 = family === 'wan30';
@@ -2529,6 +2530,9 @@ export function VideoToolbar({
       )}
       {isSeedance25Ar ? (
         <p className="video-manxue-hint">固定 15s/30s · 9:16/16:9 · 仅支持参考图 · 按次计费</p>
+      ) : null}
+      {isSeedanceMd ? (
+        <p className="video-manxue-hint">5/10/15s · 固定 720p · 最多 9 张参考图 · 无参考视频/音频/首尾帧 · 按次计费</p>
       ) : null}
       {isFlux3 && flux3Mode !== 'enhance' ? (
         <label className="settings-inline-toggle">
