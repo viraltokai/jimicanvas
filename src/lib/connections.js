@@ -5,6 +5,7 @@ import {
   inferVideoFamily,
   getVideoReferenceImageMax,
   normalizeSeedanceInputMode,
+  usesFrameReferenceInputMode,
   getVideoReferenceVideoMax,
   resolveVideoGenerationType,
   VIDEO_FRAME_IMAGE_CONNECTION_MAX,
@@ -237,7 +238,7 @@ export function isVideoFrameImageMode(node) {
   if (family === 'flux3') {
     return String(node?.videoFlux3Mode || 't2v') === 'flf';
   }
-  if (family === 'seedance' || family === 'seedance25gz') {
+  if (usesFrameReferenceInputMode(family, node?.videoModel)) {
     return normalizeSeedanceInputMode(node?.videoGenerationType, node) === 'frame';
   }
   return false;
@@ -252,7 +253,7 @@ export function isVideoReferenceImageMode(node) {
     const mode = String(node?.videoFlux3Mode || 't2v');
     return mode === 'i2v' || mode === 'keyframes';
   }
-  if (family === 'seedance' || family === 'seedance25gz') {
+  if (usesFrameReferenceInputMode(family, node?.videoModel)) {
     return normalizeSeedanceInputMode(node?.videoGenerationType, node) === 'reference';
   }
   // 其他模型仅支持参考图，不支持首尾帧

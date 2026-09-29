@@ -119,6 +119,8 @@ export const SEEDANCE_MD_MODEL = 'seedance2.0-md';
 export const SEEDANCE_MD_REF_IMAGE_MAX = 9;
 export const SEEDANCE25_GZ_REF_VIDEO_MAX = 10;
 export const WAN30_MODEL = 'wan3.0-prime-r2v';
+/** Wan 3.0 GZ（MT 渠道）：支持首尾帧，2-30 秒，比例多 adaptive，计费 wan3.0-gz-{分辨率} */
+export const WAN30_GZ_MODEL = 'wan3.0-gz';
 export const WAN30_REF_IMAGE_MAX = 10;
 export const WAN30_REF_VIDEO_MAX = 5;
 export const WAN30_REF_AUDIO_MAX = 5;
@@ -593,7 +595,10 @@ export const VIDEO_FAMILY_CONFIG = {
   },
   wan30: {
     provider: 'wan3.0',
-    models: [{ value: WAN30_MODEL, label: 'Wan 3.0' }],
+    models: [
+      { value: WAN30_MODEL, label: 'Wan 3.0' },
+      { value: WAN30_GZ_MODEL, label: 'Wan 3.0 GZ' },
+    ],
     resolutions: [
       { value: '480p', label: '480p' },
       { value: '720p', label: '720p' },
@@ -606,8 +611,20 @@ export const VIDEO_FAMILY_CONFIG = {
       { value: '4:3', label: '4:3' },
       { value: '3:4', label: '3:4' },
     ],
+    gzRatios: [
+      { value: 'adaptive', label: '自适应' },
+      { value: '16:9', label: '16:9' },
+      { value: '9:16', label: '9:16' },
+      { value: '1:1', label: '1:1' },
+      { value: '4:3', label: '4:3' },
+      { value: '3:4', label: '3:4' },
+    ],
     durations: Array.from({ length: 27 }, (_, i) => {
       const value = String(i + 4);
+      return { value, label: `${value} 秒` };
+    }),
+    gzDurations: Array.from({ length: 29 }, (_, i) => {
+      const value = String(i + 2);
       return { value, label: `${value} 秒` };
     }),
     defaultDuration: '4',
@@ -813,11 +830,25 @@ export function isWan30Model(model = '') {
   );
 }
 
-export function buildWan30BillingModel(resolution = '480p') {
+export function isWan30GzModel(model = '') {
+  return /^wan3\.?0[-_]gz/.test(String(model).toLowerCase());
+}
+
+/** 是否使用「全能参考 / 首尾帧」输入模式切换（Seedance 2.0、Seedance 2.5 官方、Wan 3.0 GZ） */
+export function usesFrameReferenceInputMode(family, model = '') {
+  return (
+    family === 'seedance' ||
+    family === 'seedance25gz' ||
+    (family === 'wan30' && isWan30GzModel(model))
+  );
+}
+
+export function buildWan30BillingModel(resolution = '480p', model = '') {
   const value = String(resolution || '').toLowerCase();
-  if (value.includes('1080')) return 'wan3.0-1080p';
-  if (value.includes('720')) return 'wan3.0-720p';
-  return 'wan3.0-480p';
+  const prefix = isWan30GzModel(model) ? 'wan3.0-gz' : 'wan3.0';
+  if (value.includes('1080')) return `${prefix}-1080p`;
+  if (value.includes('720')) return `${prefix}-720p`;
+  return `${prefix}-480p`;
 }
 
 export function mapFlux3ModeToApiModel(mode = DEFAULT_FLUX3_MODE) {
@@ -997,6 +1028,9 @@ export function getVideoRatioOptions(family, model = '') {
   if (family === 'grok' && isGrokMaxModel(model) && config.grokMaxRatios) {
     return config.grokMaxRatios;
   }
+  if (family === 'wan30' && isWan30GzModel(model) && config.gzRatios) {
+    return config.gzRatios;
+  }
   return config.ratios || [];
 }
 
@@ -1018,6 +1052,9 @@ export function getVideoDurationOptions(family, model = '') {
     if (isGrok15Model(model)) return config.grok15Durations || config.durations || [];
     if (isGrok10sModel(model)) return config.grok10sDurations || config.durations || [];
     if (isGrokMaxModel(model)) return config.grokMaxDurations || config.durations || [];
+  }
+  if (family === 'wan30' && isWan30GzModel(model)) {
+    return config.gzDurations || config.durations || [];
   }
   return config.durations || [];
 }
@@ -1079,13 +1116,13 @@ export function normalizeVideoModelSettings({
   const normalizedGenerationType =
     family === 'veo' || family === 'minimax'
       ? normalizeVeoGenerationType(generationType)
-      : family === 'seedance' || family === 'seedance25gz'
+      : usesFrameReferenceInputMode(family, model)
         ? normalizeSeedanceInputMode(generationType)
         : undefined;
   const effectiveOrientation = orientation ?? getDefaultVideoOrientation(family);
   const modelOptions = config.models || [];
-  const ratioOptions =
-    family === 'grok' ? getVideoRatioOptions(family, model) : config.ratios || [];
+  const usesModelRatios = family === 'grok' || family === 'wan30';
+  const ratioOptions = usesModelRatios ? getVideoRatioOptions(family, model) : config.ratios || [];
 
   const isManxueSeedance = family === 'seedance' && isSeedanceManxueModel(model);
   const manxueResolutionOptions = config.manxueResolutions || [];
@@ -1101,8 +1138,9 @@ export function normalizeVideoModelSettings({
   }
 
   const durationOptions = getVideoDurationOptions(family, normalizedModel);
-  const effectiveRatioOptions =
-    family === 'grok' ? getVideoRatioOptions(family, normalizedModel) : ratioOptions;
+  const effectiveRatioOptions = usesModelRatios
+    ? getVideoRatioOptions(family, normalizedModel)
+    : ratioOptions;
 
   const normalizedRatio = effectiveRatioOptions.some((option) => option.value === (family === 'sora' ? effectiveOrientation : ratio))
     ? family === 'sora'

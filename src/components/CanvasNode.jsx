@@ -80,6 +80,7 @@ import {
   MIN_AUDIO_NODE_HEIGHT_WITH_CONTENT,
   DEFAULT_AUDIO_NODE_WIDTH,
   DEFAULT_AUDIO_MODEL,
+  isWan30GzModel,
 } from '../lib/constants';
 import { getStoredChatToken } from '../lib/jimiaigoApi';
 import { normalizeTextModel, persistPreferredTextModel } from '../lib/textModel';
@@ -1955,12 +1956,15 @@ export function VideoToolbar({
   const isFlux3 = family === 'flux3';
   const isMinimax = family === 'minimax';
   const isWan30 = family === 'wan30';
+  // Wan 3.0 GZ 复用 Seedance 2.5 官方的「全能参考 / 首尾帧」交互
+  const isWan30Gz = isWan30 && isWan30GzModel(node.videoModel);
+  const hasGzStyleInputMode = isSeedance25Gz || isWan30Gz;
   const veoGenerationType =
     isVeo || isMinimax ? normalizeVeoGenerationType(node.videoGenerationType) : 'frame';
   const seedanceInputMode = isSeedance
     ? normalizeSeedanceInputMode(node.videoGenerationType, node)
     : 'frame';
-  const seedance25GzInputMode = isSeedance25Gz
+  const seedance25GzInputMode = hasGzStyleInputMode
     ? normalizeSeedanceInputMode(node.videoGenerationType, node)
     : 'frame';
   const flux3Mode = node.videoFlux3Mode || 't2v';
@@ -1970,17 +1974,19 @@ export function VideoToolbar({
   const showSeedanceFrames = isSeedance && seedanceInputMode === 'frame';
   const hasSeedanceFrames = showSeedanceFrames && Boolean(resolvedFirstFrame || resolvedLastFrame);
   const showMinimaxFrames = isMinimax && veoGenerationType === 'frame';
-  const showSeedance25GzFrames = isSeedance25Gz && seedance25GzInputMode === 'frame';
+  const showSeedance25GzFrames = hasGzStyleInputMode && seedance25GzInputMode === 'frame';
   const showFlux3Frames = isFlux3 && flux3Mode === 'flf';
   const showFlux3ReferenceImages = isFlux3 && (flux3Mode === 'i2v' || flux3Mode === 'keyframes');
   const showSeedance25Media =
-    isSeedance25 || isWan30 || (isSeedance25Gz && seedance25GzInputMode === 'reference');
+    isSeedance25 ||
+    (isWan30 && !isWan30Gz) ||
+    (hasGzStyleInputMode && seedance25GzInputMode === 'reference');
   // 仅图片参考的模型（不含已有独立模式切换的家族）
   const showGenericReferenceImages =
     !isVeo &&
     !isSeedance &&
     !isFlux3 &&
-    !isSeedance25Gz &&
+    !hasGzStyleInputMode &&
     !isMinimax &&
     !showSeedance25Media;
   const seedance25VideoMax = isWan30
@@ -2006,8 +2012,8 @@ export function VideoToolbar({
     showFlux3ReferenceImages ||
     showGenericReferenceImages ||
     referenceVideos.length > 0;
-  const showSeedanceStyleModeSwitch = isSeedance || isSeedance25Gz;
-  const seedanceStyleInputMode = isSeedance25Gz ? seedance25GzInputMode : seedanceInputMode;
+  const showSeedanceStyleModeSwitch = isSeedance || hasGzStyleInputMode;
+  const seedanceStyleInputMode = hasGzStyleInputMode ? seedance25GzInputMode : seedanceInputMode;
   const showFrameReferenceModeSwitch = isVeo || isMinimax;
   const seedance25AudioMax = isWan30 ? WAN30_REF_AUDIO_MAX : SEEDANCE25_REF_AUDIO_MAX;
   const familyOptions = getVisibleVideoFamilyOptions(soraVisibility);
@@ -2202,7 +2208,7 @@ export function VideoToolbar({
       return;
     }
     const patch = { videoGenerationType: value, videoGenTypeMigrated: 1, status: 'idle' };
-    const clearMediaRefs = isSeedance || isSeedance25Gz;
+    const clearMediaRefs = isSeedance || hasGzStyleInputMode;
     if (value === 'frame') {
       patch.referenceImages = [];
       if (clearMediaRefs) {

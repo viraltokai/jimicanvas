@@ -4,7 +4,10 @@ import {
   OMNI_REFERENCE_IMAGE_MAX,
   UPLOAD_SCENE,
   OMNI_REFERENCE_VIDEO_MAX,
+  WAN30_GZ_MODEL,
+  WAN30_MODEL,
   buildManxueApiModel,
+  isWan30GzModel,
 } from './constants';
 import { requestJimiaigo, requestJimiaigoForm } from './jimiaigoApi';
 import { normalizeImageUrl, uploadAsset } from './imageApi';
@@ -785,24 +788,39 @@ async function createWan30Task({
   referenceImages,
   seedanceInputs = {},
 }) {
-  const images = buildReferenceImageUrls(referenceImages).slice(0, 10);
-  const videos = (seedanceInputs.referenceVideos || []).map(pickPublicMediaUrl).filter(Boolean).slice(0, 5);
-  const audios = (seedanceInputs.referenceAudios || []).map(pickPublicMediaUrl).filter(Boolean).slice(0, 5);
+  const gz = isWan30GzModel(settings.model);
+  const firstImage = gz
+    ? pickPublicMediaUrl(seedanceInputs.firstFrame) || String(seedanceInputs.firstFrame || '').trim()
+    : '';
+  const lastImage = gz
+    ? pickPublicMediaUrl(seedanceInputs.lastFrame) || String(seedanceInputs.lastFrame || '').trim()
+    : '';
+  // wan3.0-gz 首尾帧不能与参考素材同时提交
+  const hasFrames = Boolean(firstImage || lastImage);
+  const images = hasFrames ? [] : buildReferenceImageUrls(referenceImages).slice(0, 10);
+  const videos = hasFrames
+    ? []
+    : (seedanceInputs.referenceVideos || []).map(pickPublicMediaUrl).filter(Boolean).slice(0, 5);
+  const audios = hasFrames
+    ? []
+    : (seedanceInputs.referenceAudios || []).map(pickPublicMediaUrl).filter(Boolean).slice(0, 5);
   const resolutionRaw = String(settings.resolution || '480p').toLowerCase();
   const resolution = resolutionRaw.includes('1080')
     ? '1080P'
     : resolutionRaw.includes('720')
       ? '720P'
       : '480P';
-  const allowedRatios = ['16:9', '9:16', '1:1', '4:3', '3:4'];
+  const allowedRatios = gz
+    ? ['adaptive', '16:9', '9:16', '1:1', '4:3', '3:4']
+    : ['16:9', '9:16', '1:1', '4:3', '3:4'];
   const ratio = allowedRatios.includes(settings.ratio) ? settings.ratio : '16:9';
-  const duration = Math.min(30, Math.max(4, Number(settings.duration) || 4));
+  const duration = Math.min(30, Math.max(gz ? 2 : 4, Number(settings.duration) || (gz ? 5 : 4)));
 
   const data = await requestJson('/api/video/wan30/videos', {
     token,
     method: 'POST',
     body: {
-      model: 'wan3.0-prime-r2v',
+      model: gz ? WAN30_GZ_MODEL : WAN30_MODEL,
       prompt,
       duration,
       aspect_ratio: ratio,
@@ -810,12 +828,14 @@ async function createWan30Task({
       reference_images: images,
       reference_videos: videos,
       reference_audios: audios,
+      first_image: firstImage || undefined,
+      last_image: lastImage || undefined,
     },
   });
 
   const taskId = extractTaskId(data) || data?.task_id;
   if (!taskId) {
-    throw new Error('Wan 3.0 任务创建成功，但未返回任务 ID');
+    throw new Error(`Wan 3.0${gz ? ' GZ' : ''} 任务创建成功，但未返回任务 ID`);
   }
 
   return { taskId: String(taskId), provider: 'wan3.0' };

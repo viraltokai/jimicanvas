@@ -59,6 +59,7 @@ import {
   WAN30_REF_AUDIO_MAX,
   VIDEO_GENERIC_REFERENCE_MAX,
   getImageReferenceMax,
+  usesFrameReferenceInputMode,
 } from './lib/constants';
 import {
   clampNoteSize,
@@ -4224,7 +4225,7 @@ function App() {
       patch.referenceImages = [];
       patch.videoFirstFrame = null;
       patch.videoLastFrame = null;
-      if (family === 'seedance' || family === 'seedance25gz') {
+      if (usesFrameReferenceInputMode(family, node?.videoModel)) {
         patch.videoReferenceVideos = [];
         patch.videoReferenceAudios = [];
       }

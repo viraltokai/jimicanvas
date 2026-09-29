@@ -4,6 +4,7 @@ import { buildVideoNodeLayoutPatch } from './videoNodeLayout';
 import { waitForVideoTask } from './videoApi';
 import { waitForVideoTaskViaSSE } from './videoTaskEvents';
 import { isVideoFrameImageMode, isVideoReferenceImageMode } from './connections';
+import { usesFrameReferenceInputMode } from './constants';
 
 const RECOVER_STAGGER_MS = 500;
 
@@ -380,6 +381,7 @@ export async function executeVideoGeneration(
 ) {
   const promptText = String(node.prompt || '').trim();
   const family = inferVideoFamily(node);
+  const hasInputModeSwitch = usesFrameReferenceInputMode(family, node.videoModel);
   const settings = {
     ...normalizeVideoModelSettings({
       family,
@@ -432,27 +434,27 @@ export async function executeVideoGeneration(
           family === 'seedance' || family === 'seedance25' || family === 'seedance25gz' || family === 'wan30'
             ? {
                 firstFrame:
-                  (family === 'seedance' || family === 'seedance25gz') && isVideoFrameImageMode(node)
+                  hasInputModeSwitch && isVideoFrameImageMode(node)
                     ? node.videoFirstFrame
                     : undefined,
                 lastFrame:
-                  (family === 'seedance' || family === 'seedance25gz') && isVideoFrameImageMode(node)
+                  hasInputModeSwitch && isVideoFrameImageMode(node)
                     ? node.videoLastFrame
                     : undefined,
                 referenceVideos:
-                  family === 'seedance' || family === 'seedance25gz'
+                  hasInputModeSwitch
                     ? isVideoReferenceImageMode(node)
                       ? node.videoReferenceVideos || []
                       : []
                     : node.videoReferenceVideos || [],
                 referenceAudios:
-                  family === 'seedance' || family === 'seedance25gz'
+                  hasInputModeSwitch
                     ? isVideoReferenceImageMode(node)
                       ? node.videoReferenceAudios || []
                       : []
                     : node.videoReferenceAudios || [],
                 videoRefDuration: (
-                  family === 'seedance' || family === 'seedance25gz'
+                  hasInputModeSwitch
                     ? isVideoReferenceImageMode(node)
                       ? node.videoReferenceVideos || []
                       : []

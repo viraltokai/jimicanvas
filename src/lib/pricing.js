@@ -164,7 +164,10 @@ export function resolveBillingModelName(node, options = {}) {
       return 'minimax-h3';
     }
     if (family === 'wan30') {
-      return buildWan30BillingModel(resolution || node.videoResolution || '480p');
+      return buildWan30BillingModel(
+        resolution || node.videoResolution || '480p',
+        node.videoModel || options.model || ''
+      );
     }
   }
 
