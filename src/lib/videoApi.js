@@ -802,7 +802,7 @@ async function createWan30Task({
     token,
     method: 'POST',
     body: {
-      model: 'wan3.0',
+      model: 'wan3.0-r2v',
       prompt,
       duration,
       aspect_ratio: ratio,
