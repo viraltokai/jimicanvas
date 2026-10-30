@@ -146,6 +146,7 @@ export const IMAGE_REFERENCE_LIMITS = {
   'gpt-image-2': 16,
   'gpt-image-1.5': 15,
   'grok-imagine-image-2': 3,
+  'seedream-5.0-pro': 10,
 };
 
 export function getImageReferenceMax(model) {
@@ -1230,6 +1231,7 @@ export const IMAGE_MODEL_OPTIONS = [
   { value: 'gpt-image-2', label: 'GPT Image 2', icon: 'openai' },
   { value: 'gpt-image-1.5', label: 'GPT Image 1.5', icon: 'openai' },
   { value: 'grok-imagine-image-2', label: 'Grok Image 2', icon: 'grok' },
+  { value: 'seedream-5.0-pro', label: 'Seedream 5.0 Pro', icon: 'doubao' },
 ];
 
 /** 图片模型分组：Nano / GPT 保留二级，其余左侧平铺 */
@@ -1260,6 +1262,12 @@ export const IMAGE_MODEL_GROUPS = [
     icon: 'grok',
     models: ['grok-imagine-image-2'],
   },
+  {
+    id: 'seedream-5.0-pro',
+    label: 'Seedream 5.0 Pro',
+    icon: 'doubao',
+    models: ['seedream-5.0-pro'],
+  },
 ];
 
 export const GROK_IMAGINE_IMAGE_2_RATIO_OPTIONS = [
@@ -1282,6 +1290,21 @@ export const GROK_IMAGINE_IMAGE_2_RATIO_OPTIONS = [
 export const GROK_IMAGINE_IMAGE_2_RESOLUTION_OPTIONS = [
   { value: '1k', label: '1K' },
   { value: '2k', label: '2K' },
+];
+
+/** Seedream 5.0 Pro 官方支持比例（ApiMart size 仅接受这些宽高比或 auto） */
+export const SEEDREAM_RATIO_OPTIONS = [
+  { value: '1:1', label: '1:1' },
+  { value: '4:3', label: '4:3' },
+  { value: '3:4', label: '3:4' },
+  { value: '16:9', label: '16:9' },
+  { value: '9:16', label: '9:16' },
+  { value: '3:2', label: '3:2' },
+  { value: '2:3', label: '2:3' },
+  { value: '2:1', label: '2:1' },
+  { value: '1:2', label: '1:2' },
+  { value: '21:9', label: '21:9' },
+  { value: 'auto', label: 'auto' },
 ];
 
 export const IMAGE_RESOLUTION_OPTIONS = [
@@ -1365,6 +1388,11 @@ export const IMAGE_MODEL_LIMITS = {
     qualities: ['medium', 'low'],
     maxCount: 4,
   },
+  'seedream-5.0-pro': {
+    resolutions: ['1k', '2k'],
+    ratios: SEEDREAM_RATIO_OPTIONS.map((option) => option.value),
+    maxCount: 5,
+  },
 };
 
 export function getImageModelLimits(model) {
@@ -1421,7 +1449,9 @@ export function getImageRatioOptions(model) {
         ? GPT_IMAGE15_RATIO_OPTIONS
         : model === 'grok-imagine-image-2'
           ? GROK_IMAGINE_IMAGE_2_RATIO_OPTIONS
-          : IMAGE_RATIO_OPTIONS;
+          : model === 'seedream-5.0-pro'
+            ? SEEDREAM_RATIO_OPTIONS
+            : IMAGE_RATIO_OPTIONS;
   return source.filter((option) => allowed.has(option.value));
 }
 

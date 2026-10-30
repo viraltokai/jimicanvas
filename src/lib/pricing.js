@@ -62,6 +62,11 @@ export function resolveBillingModelName(node, options = {}) {
       const quality = String(node.imageQuality || 'medium').toLowerCase() === 'low' ? 'low' : 'medium';
       return `grok-imagine-image-2-${resolution === '2k' ? '2k' : '1k'}-${quality}`;
     }
+    if (model === 'seedream-5.0-pro') {
+      const resolution = String(node.imageResolution || '1k').toLowerCase();
+      const billRes = resolution === '1.5k' || resolution === '1.5' ? '1k' : resolution;
+      return `seedream-5.0-pro-${billRes === '2k' ? '2k' : '1k'}`;
+    }
     const resolution = String(node.imageResolution || '1k').toLowerCase();
     return `${model}-${resolution}`;
   }
@@ -206,6 +211,19 @@ export function calculateEstimatedCost(pricingList, node, profile, options = {})
       }
     }
   }
+  if (!p && node.type === 'image' && (node.imageModel || '') === 'seedream-5.0-pro') {
+    const resolution = String(node.imageResolution || '1k').toLowerCase();
+    const billRes = resolution === '2k' ? '2k' : '1k';
+    const candidates = [`seedream-5.0-pro-${billRes}`, 'seedream-5.0-pro'];
+    for (const name of candidates) {
+      const found = pricingList.find((item) => item.model_name === name);
+      if (found) {
+        resolvedBillingModel = name;
+        p = found;
+        break;
+      }
+    }
+  }
   if (!p) return 0;
 
   const unitPrice = calculateCost(pricingList, resolvedBillingModel, profile);
@@ -219,6 +237,19 @@ export function calculateEstimatedCost(pricingList, node, profile, options = {})
     if (refCount > 0) {
       const refUnit = calculateCost(pricingList, 'grok-imagine-image-2', profile);
       cost += refCount * refUnit;
+    }
+    return Math.round(cost * 10000) / 10000;
+  }
+
+  if (node.type === 'image' && (node.imageModel || '') === 'seedream-5.0-pro') {
+    const refCount = Array.isArray(node.referenceImages)
+      ? node.referenceImages.filter((item) => item && (item.url || item.data || item.path)).length
+      : 0;
+    const extraRefs = Math.max(0, refCount - 1);
+    let cost = unitPrice;
+    if (extraRefs > 0) {
+      const refUnit = calculateCost(pricingList, 'seedream-5.0-pro-ref', profile);
+      cost += extraRefs * refUnit;
     }
     return Math.round(cost * 10000) / 10000;
   }
