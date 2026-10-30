@@ -53,15 +53,9 @@ export function resolveBillingModelName(node, options = {}) {
       return 'gpt-image-1.5';
     }
     if (model === 'gpt-image-2') {
-      const quality = String(node.imageQuality || 'auto').toLowerCase();
       const resolution = String(node.imageResolution || '1k').toLowerCase();
-      if (quality === 'low' || quality === 'medium' || quality === 'high') {
-        return `gpt-image-2-${quality}`;
-      }
-      // auto / 空：与后端一致，由分辨率映射到画质档
-      if (resolution === '4k') return 'gpt-image-2-high';
-      if (resolution === '2k') return 'gpt-image-2-medium';
-      return 'gpt-image-2-low';
+      if (resolution === '4k' || resolution === '2k') return `gpt-image-2-${resolution}`;
+      return 'gpt-image-2-1k';
     }
     if (model === 'grok-imagine-image-2') {
       const resolution = String(node.imageResolution || '1k').toLowerCase();
@@ -187,9 +181,7 @@ export function calculateEstimatedCost(pricingList, node, profile, options = {})
   let resolvedBillingModel = billingModel;
   let p = pricingList.find(item => item.model_name === resolvedBillingModel);
   if (!p && node.type === 'image' && (node.imageModel || '') === 'gpt-image-2') {
-    const resolution = String(node.imageResolution || '1k').toLowerCase();
-    const legacy = `gpt-image-2-${resolution === '4k' || resolution === '2k' || resolution === '1k' ? resolution : '1k'}`;
-    const candidates = [billingModel, legacy, 'gpt-image-2'];
+    const candidates = [billingModel, 'gpt-image-2'];
     for (const name of candidates) {
       const found = pricingList.find((item) => item.model_name === name);
       if (found) {
