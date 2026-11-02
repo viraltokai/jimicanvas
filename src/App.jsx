@@ -4815,7 +4815,10 @@ function App() {
       if (modelName !== 'gpt-image-1.5') {
         params.splice(1, 0, `分辨率: ${node.imageResolution || '1k'}`);
       }
-      if (node.imageQuality || modelName === 'gpt-image-1.5' || modelName === 'gpt-image-2' || modelName === 'grok-imagine-image-2') {
+      if (
+        !String(modelName).startsWith('gpt-image-2.5')
+        && (node.imageQuality || modelName === 'gpt-image-1.5' || modelName === 'gpt-image-2' || modelName === 'grok-imagine-image-2')
+      ) {
         params.push(`画质: ${node.imageQuality || (modelName === 'grok-imagine-image-2' ? 'medium' : 'auto')}`);
       }
       promptText = resolveImagePrompt(node, nodes, connections);

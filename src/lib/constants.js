@@ -144,6 +144,8 @@ export const IMAGE_REFERENCE_LIMITS = {
   nanobanana2: 5,
   nanobananapro: 5,
   'gpt-image-2': 16,
+  'gpt-image-2.5-flare': 16,
+  'gpt-image-2.5-sunburst': 16,
   'gpt-image-1.5': 15,
   'grok-imagine-image-2': 3,
   'seedream-5.0-pro': 10,
@@ -1229,6 +1231,8 @@ export const IMAGE_MODEL_OPTIONS = [
   { value: 'nanobanana2', label: 'Nano Banana 2', icon: 'nanobanana' },
   { value: 'nanobananapro', label: 'Nano Banana Pro', icon: 'nanobanana' },
   { value: 'gpt-image-2', label: 'GPT Image 2', icon: 'openai' },
+  { value: 'gpt-image-2.5-flare', label: 'GPT Image 2.5 Flare', icon: 'openai' },
+  { value: 'gpt-image-2.5-sunburst', label: 'GPT Image 2.5 Sunburst', icon: 'openai' },
   { value: 'gpt-image-1.5', label: 'GPT Image 1.5', icon: 'openai' },
   { value: 'grok-imagine-image-2', label: 'Grok Image 2', icon: 'grok' },
   { value: 'seedream-5.0-pro', label: 'Seedream 5.0 Pro', icon: 'doubao' },
@@ -1250,9 +1254,11 @@ export const IMAGE_MODEL_GROUPS = [
     id: 'gpt',
     label: 'GPT Image',
     icon: 'openai',
-    models: ['gpt-image-2', 'gpt-image-1.5'],
+    models: ['gpt-image-2', 'gpt-image-2.5-flare', 'gpt-image-2.5-sunburst', 'gpt-image-1.5'],
     shortLabels: {
       'gpt-image-2': '2',
+      'gpt-image-2.5-flare': '2.5F',
+      'gpt-image-2.5-sunburst': '2.5S',
       'gpt-image-1.5': '1.5',
     },
   },
@@ -1376,6 +1382,16 @@ export const IMAGE_MODEL_LIMITS = {
     qualities: IMAGE_QUALITY_OPTIONS.map((option) => option.value),
     maxCount: 5,
   },
+  'gpt-image-2.5-flare': {
+    resolutions: ['1k', '2k', '4k'],
+    ratios: GPT_IMAGE_RATIO_OPTIONS.map((option) => option.value),
+    maxCount: 4,
+  },
+  'gpt-image-2.5-sunburst': {
+    resolutions: ['1k', '2k', '4k'],
+    ratios: GPT_IMAGE_RATIO_OPTIONS.map((option) => option.value),
+    maxCount: 4,
+  },
   'gpt-image-1.5': {
     resolutions: [],
     ratios: GPT_IMAGE15_RATIO_OPTIONS.map((option) => option.value),
@@ -1443,7 +1459,7 @@ export function getGroupedImageModelOptions(currentModel = '') {
 export function getImageRatioOptions(model) {
   const allowed = new Set(getImageModelLimits(model).ratios);
   const source =
-    model === 'gpt-image-2'
+    model === 'gpt-image-2' || model === 'gpt-image-2.5-flare' || model === 'gpt-image-2.5-sunburst'
       ? GPT_IMAGE_RATIO_OPTIONS
       : model === 'gpt-image-1.5'
         ? GPT_IMAGE15_RATIO_OPTIONS

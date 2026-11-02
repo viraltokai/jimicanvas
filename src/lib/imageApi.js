@@ -64,6 +64,7 @@ function requestForm(path, { token, formData }) {
 }
 
 function imagePathForModel(model) {
+  if (String(model || '').startsWith('gpt-image-2.5')) return '/api/image/gpt-image-2';
   if (model === 'gpt-image-2') return '/api/image/gpt-image-2';
   if (model === 'gpt-image-1.5') return '/api/image/gpt-image-1.5';
   if (model === 'grok-imagine-image-2') return '/api/image/grok-imagine-image-2';
@@ -202,6 +203,17 @@ async function buildImageRequest({ prompt, model, ratio, resolution, quality, re
       n: 1,
       generation_mode: 'queue',
       images: refs,
+    };
+  }
+  if (String(model || '').startsWith('gpt-image-2.5')) {
+    return {
+      model,
+      prompt,
+      ratio: ratio || DEFAULT_IMAGE_RATIO,
+      resolution: resolution || DEFAULT_IMAGE_RESOLUTION,
+      n: 1,
+      generation_mode: 'queue',
+      images: referenceImages.map((image) => normalizeImageUrl(image.url || image.data)).filter(Boolean),
     };
   }
   if (model === 'gpt-image-2' || model === 'gpt-image-1.5') {
