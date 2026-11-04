@@ -118,7 +118,8 @@ export const SEEDANCE25_AR_30S_MODEL = 'seedance2.5-30s';
 export const SEEDANCE_MD_MODEL = 'seedance2.0-md';
 export const SEEDANCE_MD_REF_IMAGE_MAX = 9;
 export const SEEDANCE25_GZ_REF_VIDEO_MAX = 10;
-export const WAN30_MODEL = 'wan3.0-prime-r2v';
+/** KYY 路由键 wan3.0-prime，上游 wan3.0-prime-c1 */
+export const WAN30_MODEL = 'wan3.0-prime';
 /** Wan 3.0 GZ（MT 渠道）：支持首尾帧，2-30 秒，比例多 adaptive，计费 wan3.0-gz-{分辨率} */
 export const WAN30_GZ_MODEL = 'wan3.0-gz';
 export const WAN30_REF_IMAGE_MAX = 10;
