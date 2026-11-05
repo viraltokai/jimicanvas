@@ -4817,7 +4817,13 @@ function App() {
       }
       if (
         !String(modelName).startsWith('gpt-image-2.5')
-        && (node.imageQuality || modelName === 'gpt-image-1.5' || modelName === 'gpt-image-2' || modelName === 'grok-imagine-image-2')
+        && (
+          node.imageQuality
+          || modelName === 'gpt-image-1.5'
+          || modelName === 'gpt-image-2'
+          || String(modelName).startsWith('gpt-image-2.6')
+          || modelName === 'grok-imagine-image-2'
+        )
       ) {
         params.push(`画质: ${node.imageQuality || (modelName === 'grok-imagine-image-2' ? 'medium' : 'auto')}`);
       }

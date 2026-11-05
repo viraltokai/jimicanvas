@@ -145,6 +145,8 @@ export const IMAGE_REFERENCE_LIMITS = {
   nanobanana2: 5,
   nanobananapro: 5,
   'gpt-image-2': 16,
+  'gpt-image-2.6-flare': 16,
+  'gpt-image-2.6-sunburst': 16,
   'gpt-image-2.5-flare': 16,
   'gpt-image-2.5-sunburst': 16,
   'gpt-image-1.5': 15,
@@ -1232,6 +1234,8 @@ export const IMAGE_MODEL_OPTIONS = [
   { value: 'nanobanana2', label: 'Nano Banana 2', icon: 'nanobanana' },
   { value: 'nanobananapro', label: 'Nano Banana Pro', icon: 'nanobanana' },
   { value: 'gpt-image-2', label: 'GPT Image 2', icon: 'openai' },
+  { value: 'gpt-image-2.6-flare', label: 'GPT Image 2.6 Flare', icon: 'openai' },
+  { value: 'gpt-image-2.6-sunburst', label: 'GPT Image 2.6 Sunburst', icon: 'openai' },
   { value: 'gpt-image-2.5-flare', label: 'GPT Image 2.5 Flare', icon: 'openai' },
   { value: 'gpt-image-2.5-sunburst', label: 'GPT Image 2.5 Sunburst', icon: 'openai' },
   { value: 'gpt-image-1.5', label: 'GPT Image 1.5', icon: 'openai' },
@@ -1255,9 +1259,11 @@ export const IMAGE_MODEL_GROUPS = [
     id: 'gpt',
     label: 'GPT Image',
     icon: 'openai',
-    models: ['gpt-image-2', 'gpt-image-2.5-flare', 'gpt-image-2.5-sunburst', 'gpt-image-1.5'],
+    models: ['gpt-image-2', 'gpt-image-2.6-flare', 'gpt-image-2.6-sunburst', 'gpt-image-2.5-flare', 'gpt-image-2.5-sunburst', 'gpt-image-1.5'],
     shortLabels: {
       'gpt-image-2': '2',
+      'gpt-image-2.6-flare': '2.6F',
+      'gpt-image-2.6-sunburst': '2.6S',
       'gpt-image-2.5-flare': '2.5F',
       'gpt-image-2.5-sunburst': '2.5S',
       'gpt-image-1.5': '1.5',
@@ -1366,6 +1372,12 @@ export const IMAGE_QUALITY_OPTIONS = [
   { value: 'high', label: '高' },
 ];
 
+export const GPT26_IMAGE_QUALITY_OPTIONS = [
+  ...IMAGE_QUALITY_OPTIONS,
+  { value: 'xhigh', label: '超高' },
+  { value: 'max', label: '最高' },
+];
+
 export const IMAGE_MODEL_LIMITS = {
   nanobanana2: {
     resolutions: ['1k', '2k', '4k'],
@@ -1382,6 +1394,18 @@ export const IMAGE_MODEL_LIMITS = {
     ratios: GPT_IMAGE_RATIO_OPTIONS.map((option) => option.value),
     qualities: IMAGE_QUALITY_OPTIONS.map((option) => option.value),
     maxCount: 5,
+  },
+  'gpt-image-2.6-flare': {
+    resolutions: ['1k', '2k', '4k'],
+    ratios: GPT_IMAGE_RATIO_OPTIONS.map((option) => option.value),
+    qualities: GPT26_IMAGE_QUALITY_OPTIONS.map((option) => option.value),
+    maxCount: 4,
+  },
+  'gpt-image-2.6-sunburst': {
+    resolutions: ['1k', '2k', '4k'],
+    ratios: GPT_IMAGE_RATIO_OPTIONS.map((option) => option.value),
+    qualities: GPT26_IMAGE_QUALITY_OPTIONS.map((option) => option.value),
+    maxCount: 4,
   },
   'gpt-image-2.5-flare': {
     resolutions: ['1k', '2k', '4k'],
@@ -1460,7 +1484,11 @@ export function getGroupedImageModelOptions(currentModel = '') {
 export function getImageRatioOptions(model) {
   const allowed = new Set(getImageModelLimits(model).ratios);
   const source =
-    model === 'gpt-image-2' || model === 'gpt-image-2.5-flare' || model === 'gpt-image-2.5-sunburst'
+    model === 'gpt-image-2'
+      || model === 'gpt-image-2.6-flare'
+      || model === 'gpt-image-2.6-sunburst'
+      || model === 'gpt-image-2.5-flare'
+      || model === 'gpt-image-2.5-sunburst'
       ? GPT_IMAGE_RATIO_OPTIONS
       : model === 'gpt-image-1.5'
         ? GPT_IMAGE15_RATIO_OPTIONS
@@ -1486,6 +1514,9 @@ export function getImageQualityOptions(model) {
       { value: 'medium', label: '中' },
       { value: 'low', label: '低' },
     ].filter((option) => allowedSet.has(option.value));
+  }
+  if (String(model || '').startsWith('gpt-image-2.6') || String(model || '').startsWith('gpt-image-2-6')) {
+    return GPT26_IMAGE_QUALITY_OPTIONS.filter((option) => allowedSet.has(option.value));
   }
   return IMAGE_QUALITY_OPTIONS.filter((option) => {
     if (!allowedSet.has(option.value)) return false;

@@ -57,6 +57,9 @@ export function resolveBillingModelName(node, options = {}) {
       if (resolution === '4k' || resolution === '2k') return `gpt-image-2-${resolution}`;
       return 'gpt-image-2-1k';
     }
+    if (String(model).startsWith('gpt-image-2.6') || String(model).startsWith('gpt-image-2-6')) {
+      return model.includes('sunburst') ? 'gpt-image-2.6-sunburst-async' : 'gpt-image-2.6-flare-async';
+    }
     if (String(model).startsWith('gpt-image-2.5')) {
       return model.includes('sunburst') ? 'gpt-image-2.5-sunburst-async' : 'gpt-image-2.5-flare-async';
     }
@@ -197,6 +200,14 @@ export function calculateEstimatedCost(pricingList, node, profile, options = {})
         p = found;
         break;
       }
+    }
+  }
+  if (!p && node.type === 'image' && (String(node.imageModel || '').startsWith('gpt-image-2.6') || String(node.imageModel || '').startsWith('gpt-image-2-6'))) {
+    const publicName = billingModel.replace(/-async$/, '');
+    const found = pricingList.find((item) => item.model_name === publicName);
+    if (found) {
+      resolvedBillingModel = publicName;
+      p = found;
     }
   }
   if (!p && node.type === 'image' && String(node.imageModel || '').startsWith('gpt-image-2.5')) {

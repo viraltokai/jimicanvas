@@ -63,8 +63,13 @@ function requestForm(path, { token, formData }) {
   });
 }
 
+function isGptImage26Model(model) {
+  const name = String(model || '');
+  return name.startsWith('gpt-image-2.6') || name.startsWith('gpt-image-2-6');
+}
+
 function imagePathForModel(model) {
-  if (String(model || '').startsWith('gpt-image-2.5')) return '/api/image/gpt-image-2';
+  if (isGptImage26Model(model) || String(model || '').startsWith('gpt-image-2.5')) return '/api/image/gpt-image-2';
   if (model === 'gpt-image-2') return '/api/image/gpt-image-2';
   if (model === 'gpt-image-1.5') return '/api/image/gpt-image-1.5';
   if (model === 'grok-imagine-image-2') return '/api/image/grok-imagine-image-2';
@@ -204,6 +209,19 @@ async function buildImageRequest({ prompt, model, ratio, resolution, quality, re
       generation_mode: 'queue',
       images: refs,
     };
+  }
+  if (isGptImage26Model(model)) {
+    const body = {
+      model,
+      prompt,
+      ratio: ratio || DEFAULT_IMAGE_RATIO,
+      resolution: resolution || DEFAULT_IMAGE_RESOLUTION,
+      n: 1,
+      generation_mode: 'queue',
+      images: referenceImages.map((image) => normalizeImageUrl(image.url || image.data)).filter(Boolean),
+    };
+    if (quality && quality !== 'auto') body.quality = quality;
+    return body;
   }
   if (String(model || '').startsWith('gpt-image-2.5')) {
     return {
