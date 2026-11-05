@@ -39,6 +39,15 @@ export function calculateCost(pricingList, modelName, profile) {
   return price;
 }
 
+function gptImage26AsyncBillingName(model, quality) {
+  const base = String(model).includes('sunburst')
+    ? 'gpt-image-2.6-sunburst-async'
+    : 'gpt-image-2.6-flare-async';
+  const q = String(quality || '').trim().toLowerCase();
+  if (q === 'low' || q === 'medium' || q === 'high' || q === 'xhigh' || q === 'max') return `${base}-${q}`;
+  return base;
+}
+
 export function resolveBillingModelName(node, options = {}) {
   const { hasVideoRefs = false } = options;
 
@@ -58,7 +67,7 @@ export function resolveBillingModelName(node, options = {}) {
       return 'gpt-image-2-1k';
     }
     if (String(model).startsWith('gpt-image-2.6') || String(model).startsWith('gpt-image-2-6')) {
-      return model.includes('sunburst') ? 'gpt-image-2.6-sunburst-async' : 'gpt-image-2.6-flare-async';
+      return gptImage26AsyncBillingName(model, node.imageQuality);
     }
     if (String(model).startsWith('gpt-image-2.5')) {
       return model.includes('sunburst') ? 'gpt-image-2.5-sunburst-async' : 'gpt-image-2.5-flare-async';
@@ -201,11 +210,20 @@ export function calculateEstimatedCost(pricingList, node, profile, options = {})
     }
   }
   if (!p && node.type === 'image' && (String(node.imageModel || '').startsWith('gpt-image-2.6') || String(node.imageModel || '').startsWith('gpt-image-2-6'))) {
-    const publicName = billingModel.replace(/-async$/, '');
-    const found = pricingList.find((item) => item.model_name === publicName);
-    if (found) {
-      resolvedBillingModel = publicName;
-      p = found;
+    const asyncBase = String(node.imageModel).includes('sunburst')
+      ? 'gpt-image-2.6-sunburst-async'
+      : 'gpt-image-2.6-flare-async';
+    const syncBase = asyncBase.replace(/-async$/, '');
+    const quality = String(node.imageQuality || '').trim().toLowerCase();
+    const suffix = ['low', 'medium', 'high', 'xhigh', 'max'].includes(quality) ? `-${quality}` : '';
+    const candidates = [`${asyncBase}${suffix}`, `${syncBase}${suffix}`, asyncBase, syncBase];
+    for (const name of candidates) {
+      const found = pricingList.find((item) => item.model_name === name);
+      if (found) {
+        resolvedBillingModel = name;
+        p = found;
+        break;
+      }
     }
   }
   if (!p && node.type === 'image' && String(node.imageModel || '').startsWith('gpt-image-2.5')) {
