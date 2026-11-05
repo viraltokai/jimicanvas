@@ -136,8 +136,10 @@ export const FLUX3_MODE_OPTIONS = [
 export const DEFAULT_FLUX3_MODE = 't2v';
 export const FLUX3_REF_KEYFRAME_MAX = 10;
 export const VIDEO_GENERIC_REFERENCE_MAX = 5;
-/** Gemini Omni 参考图上限 */
-export const OMNI_REFERENCE_IMAGE_MAX = 7;
+/** Gemini Omni 1.1 参考图上限 */
+export const OMNI_REFERENCE_IMAGE_MAX = 10;
+export const GEMINI_OMNI_11_MODEL = 'gemini-omni-1.1';
+export const GEMINI_OMNI_11_PREPAID_SECONDS = 10;
 /** Gemini Omni 参考视频上限 */
 export const OMNI_REFERENCE_VIDEO_MAX = 1;
 
@@ -213,7 +215,7 @@ export function normalizeSeedanceInputMode(value, node) {
 export const VIDEO_FAMILY_OPTIONS = [
   { value: 'sora', label: 'Sora' },
   { value: 'veo', label: 'VEO' },
-  { value: 'omni', label: 'Omni' },
+  { value: 'omni', label: 'Gemini Omni 1.1' },
   { value: 'seedance', label: 'Seedance' },
   { value: 'seedance25', label: 'Seedance 2.5' },
   { value: 'seedance25gz', label: 'Seedance 2.5 官方' },
@@ -320,8 +322,10 @@ export const VIDEO_FAMILY_CONFIG = {
   },
   omni: {
     provider: 'omni',
-    models: [{ value: 'Gemini-Omini', label: 'Gemini Omni' }],
+    defaultDuration: '10',
+    models: [{ value: 'gemini-omni-1.1', label: 'Gemini Omni 1.1' }],
     resolutions: [
+      { value: '360p', label: '360p' },
       { value: '720p', label: '720p' },
       { value: '1080p', label: '1080p' },
       { value: '4k', label: '4K' },
@@ -329,14 +333,8 @@ export const VIDEO_FAMILY_CONFIG = {
     ratios: [
       { value: '16:9', label: '16:9' },
       { value: '9:16', label: '9:16' },
-      { value: '1:1', label: '1:1' },
     ],
-    durations: [
-      { value: '4', label: '4 秒' },
-      { value: '6', label: '6 秒' },
-      { value: '8', label: '8 秒' },
-      { value: '10', label: '10 秒' },
-    ],
+    durations: [],
     maxCount: 7,
     resolutionKey: 'resolution',
     ratioKey: 'ratio',
@@ -1042,7 +1040,7 @@ export function getVideoRatioOptions(family, model = '') {
 
 export function getVideoDurationOptions(family, model = '') {
   const config = getVideoFamilyConfig(family);
-  if (family === 'seedance25ar') {
+  if (family === 'seedance25ar' || family === 'omni') {
     return [];
   }
   if (family === 'seedance' && isSeedanceManxueModel(model)) {

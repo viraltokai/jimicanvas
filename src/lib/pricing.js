@@ -81,7 +81,6 @@ export function resolveBillingModelName(node, options = {}) {
     const family = node.videoFamily || 'seedance';
     const model = node.videoModel || (family === 'sora' ? 'sora2-gz-sp' : family === 'seedance' ? 'seedance-2.0-manxue' : '');
     const resolution = String(node.videoResolution || '720p').toLowerCase();
-    const duration = String(node.videoDuration || '8');
 
     if (family === 'sora') {
       return model;
@@ -107,10 +106,9 @@ export function resolveBillingModelName(node, options = {}) {
       if (model === 'omni-10s') {
         return 'omni-10s';
       }
-      if (hasVideoRefs) {
-        return `${model}-${resolution}-video`;
-      }
-      return `${model}-${resolution}-${duration}s`;
+      const allowed = ['360p', '720p', '1080p', '4k'];
+      const res = allowed.includes(resolution) ? resolution : '720p';
+      return `gemini-omni-1.1-${res}`;
     }
     if (family === 'seedance') {
       const modelName = String(node.videoModel || options.model || '').trim();
@@ -278,6 +276,10 @@ export function calculateEstimatedCost(pricingList, node, profile, options = {})
 
   const family = node.type === 'video' ? node.videoFamily : '';
   const duration = Number(options.duration || (node.type === 'video' ? node.videoDuration : 0)) || 0;
+
+  if (family === 'omni' && String(resolvedBillingModel).startsWith('gemini-omni-1.1')) {
+    return Math.round(unitPrice * 10 * 10000) / 10000;
+  }
 
   // Seedance 2.5 / Grok / Flux 3 / Wan 3.0 等按秒模型：强制单价 × 时长（不依赖 pricing_type 配置）
   if (

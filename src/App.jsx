@@ -4836,7 +4836,7 @@ function App() {
       params = [
         `比例: ${node.videoRatio || node.videoOrientation || '16:9'}`,
         `分辨率: ${node.videoResolution || '720p'}`,
-        `时长: ${node.videoDuration || '8'}秒`,
+        `时长: ${family === 'omni' ? '10秒（预扣）' : `${node.videoDuration || '8'}秒`}`,
         `数量: ${node.videoCount || 1}次`,
       ];
       promptText = resolveVideoPrompt(node, nodes, connections);

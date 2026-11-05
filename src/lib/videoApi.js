@@ -178,21 +178,17 @@ function buildReferenceVideoUrls(referenceVideos = [], maxCount = 0) {
 
 async function createOmniTask({ token, prompt, settings, referenceImages, referenceVideos = [] }) {
   const videoUrls = buildReferenceVideoUrls(referenceVideos, OMNI_REFERENCE_VIDEO_MAX);
+  const ratio = settings.ratio === '9:16' ? '9:16' : '16:9';
   const data = await requestJson('/api/video/gemini/create', {
     token,
     method: 'POST',
     body: {
-      model: settings.model,
+      model: 'gemini-omni-1.1',
       prompt,
-      duration: Number(settings.duration) || 6,
       resolution: settings.resolution,
-      aspect_ratio: settings.ratio,
+      aspect_ratio: ratio,
       image_urls: buildReferenceImageUrls(referenceImages).slice(0, OMNI_REFERENCE_IMAGE_MAX),
       video_urls: videoUrls,
-      video_ref_duration: (referenceVideos || []).reduce(
-        (sum, item) => sum + (Number(item?.duration) || 0),
-        0
-      ),
     },
   });
 
@@ -201,7 +197,7 @@ async function createOmniTask({ token, prompt, settings, referenceImages, refere
     throw new Error('Omni 任务创建成功，但未返回任务 ID');
   }
 
-  return { taskId: String(taskId), provider: 'omni', queryModel: settings.model };
+  return { taskId: String(taskId), provider: 'omni', queryModel: 'gemini-omni-1.1' };
 }
 
 function recoverSeedanceAssetUrl(value) {
@@ -900,7 +896,7 @@ export async function queryOmniVideoTaskOnce({ token, taskId, queryModel }) {
     token,
     query: {
       id: taskId,
-      model: queryModel || 'Gemini-Omini',
+      model: queryModel || 'gemini-omni-1.1',
     },
   });
 }

@@ -1954,6 +1954,7 @@ export function VideoToolbar({
   const isSeedance25Ar = family === 'seedance25ar';
   const isSeedanceMd = family === 'seedancemd';
   const isFlux3 = family === 'flux3';
+  const isOmni = family === 'omni';
   const isMinimax = family === 'minimax';
   const isWan30 = family === 'wan30';
   // Wan 3.0 GZ 复用 Seedance 2.5 官方的「全能参考 / 首尾帧」交互
@@ -2526,14 +2527,17 @@ export function VideoToolbar({
       {shareRatioDurationRow ? (
         <div className="settings-options-row">
           {flux3Mode === 'enhance' && isFlux3 ? null : ratioSegment}
-          {!isSeedance25Ar ? durationSegment : null}
+          {!isSeedance25Ar && durationOptions.length > 0 ? durationSegment : null}
         </div>
       ) : (
         <>
           {flux3Mode === 'enhance' && isFlux3 ? null : ratioSegment}
-          {!isSeedance25Ar ? durationSegment : null}
+          {!isSeedance25Ar && durationOptions.length > 0 ? durationSegment : null}
         </>
       )}
+      {isOmni ? (
+        <p className="video-manxue-hint">Gemini Omni 1.1 · 16:9 / 9:16 · 最多 10 张参考图 · 时长由模型决定，按 10 秒预扣</p>
+      ) : null}
       {isSeedance25Ar ? (
         <p className="video-manxue-hint">固定 15s/30s · 9:16/16:9 · 仅支持参考图 · 按次计费</p>
       ) : null}
@@ -2568,7 +2572,7 @@ export function VideoToolbar({
     </div>
   );
 
-  const durationLabel = node.videoDuration ? `${node.videoDuration}s` : '';
+  const durationLabel = isOmni ? '10s' : node.videoDuration ? `${node.videoDuration}s` : '';
   const summaryParts = [
     durationLabel,
     ratioValue,
