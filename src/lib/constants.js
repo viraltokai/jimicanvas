@@ -118,7 +118,7 @@ export const SEEDANCE25_AR_30S_MODEL = 'seedance2.5-30s';
 export const SEEDANCE_MD_MODEL = 'seedance2.0-md';
 export const SEEDANCE_MD_REF_IMAGE_MAX = 9;
 export const SEEDANCE25_GZ_REF_VIDEO_MAX = 10;
-/** KYY 路由键 wan3.0-prime，上游 wan3.0-prime-c1 */
+/** KYY 路由键 wan3.0-prime，上游 wan3.0-prime-c2。标准渠道暂时不支持 480p。 */
 export const WAN30_MODEL = 'wan3.0-prime';
 /** Wan 3.0 GZ（MT 渠道）：支持首尾帧，2-30 秒，比例多 adaptive，计费 wan3.0-gz-{分辨率} */
 export const WAN30_GZ_MODEL = 'wan3.0-gz';
@@ -847,12 +847,14 @@ export function usesFrameReferenceInputMode(family, model = '') {
   );
 }
 
-export function buildWan30BillingModel(resolution = '480p', model = '') {
+export function buildWan30BillingModel(resolution = '720p', model = '') {
   const value = String(resolution || '').toLowerCase();
-  const prefix = isWan30GzModel(model) ? 'wan3.0-gz' : 'wan3.0';
+  const gz = isWan30GzModel(model);
+  const prefix = gz ? 'wan3.0-gz' : 'wan3.0';
   if (value.includes('1080')) return `${prefix}-1080p`;
   if (value.includes('720')) return `${prefix}-720p`;
-  return `${prefix}-480p`;
+  if (gz) return `${prefix}-480p`;
+  return `${prefix}-720p`;
 }
 
 export function mapFlux3ModeToApiModel(mode = DEFAULT_FLUX3_MODE) {
@@ -1023,6 +1025,9 @@ export function getVideoResolutionOptions(family, model = '') {
   }
   if (family === 'seedance' && isSeedance933Model(model)) {
     return config.c933Resolutions || [];
+  }
+  if (family === 'wan30' && !isWan30GzModel(model)) {
+    return (config.resolutions || []).filter((option) => option.value !== '480p');
   }
   return config.resolutions || [];
 }

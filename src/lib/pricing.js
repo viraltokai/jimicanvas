@@ -177,7 +177,7 @@ export function resolveBillingModelName(node, options = {}) {
     }
     if (family === 'wan30') {
       return buildWan30BillingModel(
-        resolution || node.videoResolution || '480p',
+        resolution || node.videoResolution || '720p',
         node.videoModel || options.model || ''
       );
     }

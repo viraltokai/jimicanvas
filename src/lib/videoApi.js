@@ -800,12 +800,13 @@ async function createWan30Task({
   const audios = hasFrames
     ? []
     : (seedanceInputs.referenceAudios || []).map(pickPublicMediaUrl).filter(Boolean).slice(0, 5);
-  const resolutionRaw = String(settings.resolution || '480p').toLowerCase();
-  const resolution = resolutionRaw.includes('1080')
+  const resolutionRaw = String(settings.resolution || (gz ? '480p' : '720p')).toLowerCase();
+  let resolution = resolutionRaw.includes('1080')
     ? '1080P'
     : resolutionRaw.includes('720')
       ? '720P'
       : '480P';
+  if (!gz && resolution === '480P') resolution = '720P';
   const allowedRatios = gz
     ? ['adaptive', '16:9', '9:16', '1:1', '4:3', '3:4']
     : ['16:9', '9:16', '1:1', '4:3', '3:4'];
