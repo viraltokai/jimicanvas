@@ -21,6 +21,7 @@ export function ModelIcon({ name = '', size = 18, className = '', invertOnDark =
     if (normalized.includes('qwen') || normalized.includes('wan') || normalized.includes('tongyi') || normalized.includes('alibaba')) {
       return 'qwen';
     }
+    if (normalized.includes('muse')) return 'muse';
     return normalized || 'openai';
   })();
 
@@ -33,6 +34,7 @@ export function ModelIcon({ name = '', size = 18, className = '', invertOnDark =
     if (iconId === 'nanobanana') return '/nanobanana-color.svg';
     if (iconId === 'minimax') return '/minimax-color.svg';
     if (iconId === 'qwen') return '/qwen-color.svg';
+    if (iconId === 'muse') return '/muse-color.svg';
     return `/${iconId}-color.svg`;
   })();
 
@@ -70,5 +72,6 @@ export function getVideoFamilyIconName(family = '') {
   if (value === 'flux3') return 'blackforestlabs';
   if (value === 'minimax') return 'minimax';
   if (value === 'wan30') return 'qwen';
+  if (value === 'muse') return 'muse';
   return 'doubao';
 }

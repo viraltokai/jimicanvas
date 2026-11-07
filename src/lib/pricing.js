@@ -7,6 +7,7 @@ import {
   isGrok10sModel,
   isGrok15Model,
   isGrokMaxModel,
+  isMuseVideoModel,
 } from './constants';
 
 export function getUserPriceType(profile) {
@@ -90,6 +91,10 @@ export function resolveBillingModelName(node, options = {}) {
     const family = node.videoFamily || 'seedance';
     const model = node.videoModel || (family === 'sora' ? 'sora2-gz-sp' : family === 'seedance' ? 'seedance-2.0-manxue' : '');
     const resolution = String(node.videoResolution || '720p').toLowerCase();
+
+    if (family === 'muse' || isMuseVideoModel(model)) {
+      return 'muse-videos';
+    }
 
     if (family === 'sora') {
       return model;

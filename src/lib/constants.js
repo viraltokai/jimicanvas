@@ -125,6 +125,9 @@ export const WAN30_GZ_MODEL = 'wan3.0-gz';
 export const WAN30_REF_IMAGE_MAX = 10;
 export const WAN30_REF_VIDEO_MAX = 5;
 export const WAN30_REF_AUDIO_MAX = 5;
+/** MT muse-videos：固定 10 秒、720p，文生或最多 9 张参考图 */
+export const MUSE_VIDEO_MODEL = 'muse-videos';
+export const MUSE_REF_IMAGE_MAX = 9;
 export const FLUX3_MODEL = 'flux-3-draft';
 export const FLUX3_MODE_OPTIONS = [
   { value: 't2v', label: '文生' },
@@ -225,6 +228,7 @@ export const VIDEO_FAMILY_OPTIONS = [
   { value: 'grok', label: 'Grok' },
   { value: 'minimax', label: 'MiniMax H3' },
   { value: 'wan30', label: 'Wan 3.0' },
+  { value: 'muse', label: 'Muse Video' },
 ];
 
 /** 系列选择分组：组内可用短标签，避免平铺过长 */
@@ -252,12 +256,13 @@ export const VIDEO_FAMILY_GROUPS = [
     id: 'more',
     label: '其他',
     icon: 'doubao',
-    families: ['flux3', 'grok', 'minimax', 'wan30'],
+    families: ['flux3', 'grok', 'minimax', 'wan30', 'muse'],
     familyIcons: {
       flux3: 'blackforestlabs',
       grok: 'grok',
       minimax: 'minimax',
       wan30: 'qwen',
+      muse: 'muse',
     },
   },
   {
@@ -637,6 +642,27 @@ export const VIDEO_FAMILY_CONFIG = {
     resolutionKey: 'resolution',
     ratioKey: 'ratio',
   },
+  muse: {
+    provider: 'muse',
+    models: [{ value: MUSE_VIDEO_MODEL, label: 'Muse Video' }],
+    resolutions: [{ value: '720p', label: '720p' }],
+    ratios: [
+      { value: '16:9', label: '16:9' },
+      { value: '9:16', label: '9:16' },
+      { value: '1:1', label: '1:1' },
+      { value: '4:3', label: '4:3' },
+      { value: '3:4', label: '3:4' },
+      { value: '3:2', label: '3:2' },
+      { value: '2:3', label: '2:3' },
+      { value: 'auto', label: '自适应' },
+    ],
+    durations: [{ value: '10', label: '10 秒' }],
+    defaultDuration: '10',
+    defaultOrientation: 'landscape',
+    maxCount: 1,
+    resolutionKey: 'resolution',
+    ratioKey: 'ratio',
+  },
 };
 
 export const MINIMAX_H3_MODEL = 'minimax-h3';
@@ -838,6 +864,18 @@ export function isWan30GzModel(model = '') {
   return /^wan3\.?0[-_]gz/.test(String(model).toLowerCase());
 }
 
+export function isMuseVideoModel(model = '') {
+  const value = String(model).toLowerCase().replace(/_/g, '-');
+  return (
+    value === 'muse' ||
+    value === MUSE_VIDEO_MODEL ||
+    value === 'muse-video' ||
+    value === 'muse-video-ext' ||
+    value.startsWith('muse-videos-') ||
+    value.startsWith('muse-video-')
+  );
+}
+
 /** 是否使用「全能参考 / 首尾帧」输入模式切换（Seedance 2.0、Seedance 2.5 官方、Wan 3.0 GZ） */
 export function usesFrameReferenceInputMode(family, model = '') {
   return (
@@ -878,6 +916,7 @@ export function inferVideoFamily(node = {}) {
 
   const model = String(node.videoModel || '').toLowerCase();
   if (isFlux3Model(model)) return 'flux3';
+  if (isMuseVideoModel(model)) return 'muse';
   if (isWan30Model(model)) return 'wan30';
   if (model.includes('minimax') || model.includes('hailuo') || isMiniMaxH3Model(model)) return 'minimax';
   if (model.includes('grok')) return 'grok';
@@ -910,6 +949,7 @@ export function getVideoReferenceImageMax(node = {}) {
   if (family === 'grok') return getGrokReferenceImageMax(node.videoModel);
   if (family === 'minimax') return MINIMAX_REFERENCE_IMAGE_MAX;
   if (family === 'wan30') return WAN30_REF_IMAGE_MAX;
+  if (family === 'muse') return MUSE_REF_IMAGE_MAX;
   return VIDEO_GENERIC_REFERENCE_MAX;
 }
 

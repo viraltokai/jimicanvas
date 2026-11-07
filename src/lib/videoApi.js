@@ -838,6 +838,35 @@ async function createWan30Task({
   return { taskId: String(taskId), provider: 'wan3.0' };
 }
 
+async function createMuseTask({ token, prompt, settings, referenceImages }) {
+  const images = buildReferenceImageUrls(referenceImages).slice(0, 9);
+  const ratio = settings.ratio || '16:9';
+  const auto = ratio === 'auto';
+
+  const data = await requestJson('/api/video/muse/videos', {
+    token,
+    method: 'POST',
+    body: {
+      model: 'muse-videos',
+      prompt,
+      duration: 10,
+      aspect_ratio: auto ? '' : ratio,
+      ratio: auto ? 'auto' : ratio,
+      size: auto ? 'auto' : undefined,
+      resolution: '720p',
+      image_urls: images,
+      reference_images: images,
+    },
+  });
+
+  const taskId = extractTaskId(data) || data?.task_id;
+  if (!taskId) {
+    throw new Error('Muse Video 任务创建成功，但未返回任务 ID');
+  }
+
+  return { taskId: String(taskId), provider: 'muse' };
+}
+
 export async function createVideoGenerationTask({
   token,
   prompt,
@@ -881,6 +910,8 @@ export async function createVideoGenerationTask({
       return createMiniMaxH3Task({ token, prompt, settings, referenceImages, veoFrames });
     case 'wan30':
       return createWan30Task({ token, prompt, settings, referenceImages, seedanceInputs });
+    case 'muse':
+      return createMuseTask({ token, prompt, settings, referenceImages });
     case 'sora':
     default:
       return createSoraTask({ token, prompt, settings, referenceImages });
