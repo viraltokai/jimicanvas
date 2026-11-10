@@ -78,6 +78,11 @@ export function resolveBillingModelName(node, options = {}) {
       const quality = String(node.imageQuality || 'medium').toLowerCase() === 'low' ? 'low' : 'medium';
       return `grok-imagine-image-2-${resolution === '2k' ? '2k' : '1k'}-${quality}`;
     }
+    if (model === 'seedream-5.5') {
+      const resolution = String(node.imageResolution || '2k').toLowerCase();
+      const billRes = resolution === '2k' || resolution === '2' ? '2k' : '1k';
+      return `seedream-5.5-${billRes}`;
+    }
     if (model === 'seedream-5.0-pro') {
       const resolution = String(node.imageResolution || '1k').toLowerCase();
       const billRes = resolution === '1.5k' || resolution === '1.5' ? '1k' : resolution;
@@ -254,6 +259,19 @@ export function calculateEstimatedCost(pricingList, node, profile, options = {})
       }
     }
   }
+  if (!p && node.type === 'image' && (node.imageModel || '') === 'seedream-5.5') {
+    const resolution = String(node.imageResolution || '2k').toLowerCase();
+    const billRes = resolution === '2k' || resolution === '2' ? '2k' : '1k';
+    const candidates = [`seedream-5.5-${billRes}`, 'seedream-5.5'];
+    for (const name of candidates) {
+      const found = pricingList.find((item) => item.model_name === name);
+      if (found) {
+        resolvedBillingModel = name;
+        p = found;
+        break;
+      }
+    }
+  }
   if (!p && node.type === 'image' && (node.imageModel || '') === 'seedream-5.0-pro') {
     const resolution = String(node.imageResolution || '1k').toLowerCase();
     const billRes = resolution === '2k' ? '2k' : '1k';
@@ -279,6 +297,18 @@ export function calculateEstimatedCost(pricingList, node, profile, options = {})
     let cost = unitPrice;
     if (refCount > 0) {
       const refUnit = calculateCost(pricingList, 'grok-imagine-image-2', profile);
+      cost += refCount * refUnit;
+    }
+    return Math.round(cost * 10000) / 10000;
+  }
+
+  if (node.type === 'image' && (node.imageModel || '') === 'seedream-5.5') {
+    const refCount = Array.isArray(node.referenceImages)
+      ? node.referenceImages.filter((item) => item && (item.url || item.data || item.path)).length
+      : 0;
+    let cost = unitPrice;
+    if (refCount > 0) {
+      const refUnit = calculateCost(pricingList, 'seedream-5.5-ref', profile);
       cost += refCount * refUnit;
     }
     return Math.round(cost * 10000) / 10000;

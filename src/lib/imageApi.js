@@ -73,6 +73,7 @@ function imagePathForModel(model) {
   if (model === 'gpt-image-2') return '/api/image/gpt-image-2';
   if (model === 'gpt-image-1.5') return '/api/image/gpt-image-1.5';
   if (model === 'grok-imagine-image-2') return '/api/image/grok-imagine-image-2';
+  if (model === 'seedream-5.5') return '/api/image/seedream-5-5';
   if (model === 'seedream-5.0-pro') return '/api/image/seedream-5-0-pro';
   if (model === 'nanobananapro') return '/api/image/nanobananapro';
   return '/api/image/nanobanana2';
@@ -198,13 +199,13 @@ async function buildImageRequest({ prompt, model, ratio, resolution, quality, re
       images: refs,
     };
   }
-  if (model === 'seedream-5.0-pro') {
+  if (model === 'seedream-5.5' || model === 'seedream-5.0-pro') {
     const refs = referenceImages.map((image) => normalizeImageUrl(image.url || image.data)).filter(Boolean);
     return {
-      model: 'seedream-5.0-pro',
+      model,
       prompt,
       ratio: ratio || DEFAULT_IMAGE_RATIO,
-      resolution: resolution || '1k',
+      resolution: resolution || (model === 'seedream-5.5' ? '2k' : '1k'),
       n: 1,
       generation_mode: 'queue',
       images: refs,

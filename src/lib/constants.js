@@ -1,4 +1,4 @@
-import { filterActiveResolutions, isPricedModelActive, isProductPricingActive } from './pricingStatus';
+import { filterActiveResolutions, isPricedModelActive, isProductPricingActive, isResolutionEnabled } from './pricingStatus';
 
 /** 画布有改动后，延迟多久再上传到云端（防抖，减少频繁保存） */
 export const CLOUD_SYNC_DEBOUNCE_MS = 3000;
@@ -156,6 +156,7 @@ export const IMAGE_REFERENCE_LIMITS = {
   'gpt-image-2.5-sunburst': 16,
   'gpt-image-1.5': 15,
   'grok-imagine-image-2': 3,
+  'seedream-5.5': 10,
   'seedream-5.0-pro': 10,
 };
 
@@ -1283,6 +1284,7 @@ export const IMAGE_MODEL_OPTIONS = [
   { value: 'gpt-image-2.5-sunburst', label: 'GPT Image 2.5 Sunburst', icon: 'openai' },
   { value: 'gpt-image-1.5', label: 'GPT Image 1.5', icon: 'openai' },
   { value: 'grok-imagine-image-2', label: 'Grok Image 2', icon: 'grok' },
+  { value: 'seedream-5.5', label: 'Seedream 5.5', icon: 'doubao' },
   { value: 'seedream-5.0-pro', label: 'Seedream 5.0 Pro', icon: 'doubao' },
 ];
 
@@ -1319,10 +1321,14 @@ export const IMAGE_MODEL_GROUPS = [
     models: ['grok-imagine-image-2'],
   },
   {
-    id: 'seedream-5.0-pro',
-    label: 'Seedream 5.0 Pro',
+    id: 'seedream',
+    label: 'Seedream',
     icon: 'doubao',
-    models: ['seedream-5.0-pro'],
+    models: ['seedream-5.5', 'seedream-5.0-pro'],
+    shortLabels: {
+      'seedream-5.5': '5.5',
+      'seedream-5.0-pro': '5.0',
+    },
   },
 ];
 
@@ -1348,6 +1354,20 @@ export const GROK_IMAGINE_IMAGE_2_RESOLUTION_OPTIONS = [
   { value: '2k', label: '2K' },
 ];
 
+/** Seedream 5.5 支持比例。不含 auto，省略尺寸时上游按 2K。 */
+export const SEEDREAM_55_RATIO_OPTIONS = [
+  { value: '1:1', label: '1:1' },
+  { value: '4:3', label: '4:3' },
+  { value: '3:4', label: '3:4' },
+  { value: '16:9', label: '16:9' },
+  { value: '9:16', label: '9:16' },
+  { value: '3:2', label: '3:2' },
+  { value: '2:3', label: '2:3' },
+  { value: '2:1', label: '2:1' },
+  { value: '1:2', label: '1:2' },
+  { value: '21:9', label: '21:9' },
+];
+
 /** Seedream 5.0 Pro 官方支持比例（ApiMart size 仅接受这些宽高比或 auto） */
 export const SEEDREAM_RATIO_OPTIONS = [
   { value: '1:1', label: '1:1' },
@@ -1365,6 +1385,7 @@ export const SEEDREAM_RATIO_OPTIONS = [
 
 export const IMAGE_RESOLUTION_OPTIONS = [
   { value: '1k', label: '1K' },
+  { value: '1.5k', label: '1.5K' },
   { value: '2k', label: '2K' },
   { value: '4k', label: '4K' },
 ];
@@ -1472,6 +1493,11 @@ export const IMAGE_MODEL_LIMITS = {
     qualities: ['medium', 'low'],
     maxCount: 4,
   },
+  'seedream-5.5': {
+    resolutions: ['1k', '1.5k', '2k'],
+    ratios: SEEDREAM_55_RATIO_OPTIONS.map((option) => option.value),
+    maxCount: 5,
+  },
   'seedream-5.0-pro': {
     resolutions: ['1k', '2k'],
     ratios: SEEDREAM_RATIO_OPTIONS.map((option) => option.value),
@@ -1486,7 +1512,9 @@ export function getImageModelLimits(model) {
 export function getImageResolutionOptions(model) {
   const allowed = new Set(getImageModelLimits(model).resolutions || []);
   const options = IMAGE_RESOLUTION_OPTIONS.filter((option) => allowed.has(option.value));
-  return filterActiveResolutions(model, options, false);
+  const active = filterActiveResolutions(model, options, false);
+  if (model !== 'seedream-5.5') return active;
+  return active.filter((option) => option.value !== '1.5k' || isResolutionEnabled(model, '1k'));
 }
 
 export function getVisibleImageModelOptions(currentModel = '') {
@@ -1537,9 +1565,11 @@ export function getImageRatioOptions(model) {
         ? GPT_IMAGE15_RATIO_OPTIONS
         : model === 'grok-imagine-image-2'
           ? GROK_IMAGINE_IMAGE_2_RATIO_OPTIONS
-          : model === 'seedream-5.0-pro'
-            ? SEEDREAM_RATIO_OPTIONS
-            : IMAGE_RATIO_OPTIONS;
+          : model === 'seedream-5.5'
+            ? SEEDREAM_55_RATIO_OPTIONS
+            : model === 'seedream-5.0-pro'
+              ? SEEDREAM_RATIO_OPTIONS
+              : IMAGE_RATIO_OPTIONS;
   return source.filter((option) => allowed.has(option.value));
 }
 
