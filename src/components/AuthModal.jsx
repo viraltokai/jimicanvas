@@ -18,6 +18,7 @@ import {
   register,
   sendEmailCode,
 } from '../lib/userApi';
+import TurnstileField, { idleTurnstile, turnstileBlocks } from './TurnstileField';
 
 const CODE_COOLDOWN_SEC = 60;
 const GOOGLE_GSI_SCRIPT_ID = 'google-gsi-script';
@@ -42,6 +43,8 @@ export function AuthModal({
   const [isTyping, setIsTyping] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  const [turnstile, setTurnstile] = useState(idleTurnstile);
+  const [turnstileReset, setTurnstileReset] = useState(0);
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [registerForm, setRegisterForm] = useState({
     nickname: '',
@@ -62,6 +65,8 @@ export function AuthModal({
     if (!isOpen) return;
     setMode(initialMode);
     setError('');
+    setTurnstile(idleTurnstile);
+    setTurnstileReset(0);
     setIsTyping(false);
     setShowPassword(false);
   }, [isOpen, initialMode]);
@@ -187,18 +192,28 @@ export function AuthModal({
 
   if (!isOpen) return null;
 
+  const consumeTurnstile = () => {
+    if (turnstile.token) setTurnstileReset((value) => value + 1);
+  };
+
   const handleSendCode = async () => {
     const email = registerForm.email.trim();
     if (!email) {
       setError('请输入邮箱');
       return;
     }
+    if (turnstileBlocks(turnstile)) {
+      setError('请完成安全验证');
+      return;
+    }
     setError('');
     try {
-      await sendEmailCode(email);
+      await sendEmailCode(email, turnstile.token || undefined);
       setCodeCooldown(CODE_COOLDOWN_SEC);
     } catch (err) {
       setError(err.message || '发送验证码失败');
+    } finally {
+      consumeTurnstile();
     }
   };
 
@@ -210,12 +225,17 @@ export function AuthModal({
       setError('请输入账号和密码');
       return;
     }
+    if (turnstileBlocks(turnstile)) {
+      setError('请完成安全验证');
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
-      await login({ username, password });
+      await login({ username, password, cf_turnstile_token: turnstile.token || undefined });
       onSuccess?.();
     } catch (err) {
+      consumeTurnstile();
       setError(err.message || '登录失败');
     } finally {
       setSubmitting(false);
@@ -243,6 +263,10 @@ export function AuthModal({
       setError('请选择角色');
       return;
     }
+    if (turnstileBlocks(turnstile)) {
+      setError('请完成安全验证');
+      return;
+    }
 
     setSubmitting(true);
     setError('');
@@ -253,9 +277,11 @@ export function AuthModal({
         password,
         verify_code: verifyCode,
         role_id: Number(roleId),
+        cf_turnstile_token: turnstile.token || undefined,
       });
       onSuccess?.();
     } catch (err) {
+      consumeTurnstile();
       setError(err.message || '注册失败');
     } finally {
       setSubmitting(false);
@@ -265,6 +291,8 @@ export function AuthModal({
   const switchMode = (nextMode) => {
     setMode(nextMode);
     setError('');
+    setTurnstile(idleTurnstile);
+    setTurnstileReset(0);
     setShowPassword(false);
     setIsTyping(false);
   };
@@ -392,7 +420,13 @@ export function AuthModal({
                   </label>
                 </div>
 
-                <button type="submit" className="auth-submit" disabled={submitting}>
+                <TurnstileField
+                  action="login"
+                  resetSignal={turnstileReset}
+                  onChange={setTurnstile}
+                />
+
+                <button type="submit" className="auth-submit" disabled={submitting || turnstileBlocks(turnstile)}>
                   {submitting ? <Loader2 size={16} className="spin" /> : null}
                   {submitting ? '登录中...' : '登录'}
                 </button>
@@ -460,7 +494,7 @@ export function AuthModal({
                     <button
                       type="button"
                       className="auth-code-btn"
-                      disabled={codeCooldown > 0 || submitting}
+                      disabled={codeCooldown > 0 || submitting || turnstileBlocks(turnstile)}
                       onClick={handleSendCode}
                     >
                       {codeCooldown > 0 ? `${codeCooldown}s` : '发送验证码'}
@@ -564,7 +598,13 @@ export function AuthModal({
                   </div>
                 ) : null}
 
-                <button type="submit" className="auth-submit" disabled={submitting || rolesLoading}>
+                <TurnstileField
+                  action="register"
+                  resetSignal={turnstileReset}
+                  onChange={setTurnstile}
+                />
+
+                <button type="submit" className="auth-submit" disabled={submitting || rolesLoading || turnstileBlocks(turnstile)}>
                   {submitting ? <Loader2 size={16} className="spin" /> : null}
                   {submitting ? '注册中...' : '注册'}
                 </button>

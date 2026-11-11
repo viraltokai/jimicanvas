@@ -18,10 +18,10 @@ export function clearAuthToken() {
   window.dispatchEvent(new CustomEvent('auth:token-cleared'));
 }
 
-export async function login({ username, password }) {
+export async function login({ username, password, cf_turnstile_token }) {
   const data = await requestJimiaigo('/api/login', {
     method: 'POST',
-    body: { username, password },
+    body: { username, password, cf_turnstile_token: cf_turnstile_token || undefined },
     fallback: '登录失败',
   });
   const token = data?.JimiAiToken || data?.token;
@@ -52,6 +52,7 @@ export async function register({
   verify_code,
   role_id,
   invite_code = '',
+  cf_turnstile_token,
 }) {
   const data = await requestJimiaigo('/api/register', {
     method: 'POST',
@@ -62,6 +63,7 @@ export async function register({
       verify_code,
       role_id,
       invite_code,
+      cf_turnstile_token: cf_turnstile_token || undefined,
     },
     fallback: '注册失败',
   });
@@ -71,10 +73,10 @@ export async function register({
   return token;
 }
 
-export async function sendEmailCode(email) {
+export async function sendEmailCode(email, cfTurnstileToken) {
   return requestJimiaigo('/api/sendEmailCode', {
     method: 'POST',
-    body: { email },
+    body: { email, cf_turnstile_token: cfTurnstileToken || undefined },
     fallback: '发送验证码失败',
   });
 }

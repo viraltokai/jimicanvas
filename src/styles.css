@@ -10208,6 +10208,22 @@ html[data-theme='light'] .canvas-home-user-dropdown-item.is-danger svg {
   gap: 6px;
 }
 
+.auth-turnstile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.auth-turnstile-widget {
+  min-height: 65px;
+}
+
+.auth-turnstile-error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--toast-error-text, #dc2626);
+}
+
 .auth-field-label {
   font-size: 13px;
   font-weight: 500;
