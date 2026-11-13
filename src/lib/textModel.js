@@ -7,6 +7,7 @@ const ALLOWED = new Set(TEXT_MODEL_OPTIONS.map((item) => item.value));
 
 export function normalizeTextModel(model) {
   const value = String(model || '').trim();
+  if (value === 'claude-sonnet-5') return 'claude-opus-5-5';
   if (ALLOWED.has(value)) return value;
   return DEFAULT_TEXT_MODEL;
 }

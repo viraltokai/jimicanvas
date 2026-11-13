@@ -25,10 +25,10 @@ export const DEFAULT_SITE_TITLE = 'JimiCanvas';
 export const DEFAULT_SITE_SLOGAN = '轻量画布工作台';
 export const DEFAULT_KEFU_QR_URL = '/wechat-qrcode.png';
 export const CANVAS_TUTORIAL_URL = 'https://www.bilibili.com/video/BV1GWEw6gEJ9/';
-/** 与小咪助手（GlobalChatWidget）同源：gpt-5.6-sol / claude-sonnet-5 / deepseek-flash */
+/** 与小咪助手（GlobalChatWidget）同源：gpt-5.6-sol / claude-opus-5-5 / deepseek-flash */
 export const TEXT_MODEL_OPTIONS = [
   { value: 'gpt-5.6-sol', label: 'GPT-5.6 Sol' },
-  { value: 'claude-sonnet-5', label: 'Claude Sonnet 5' },
+  { value: 'claude-opus-5-5', label: 'Claude Opus 5.5' },
   { value: 'deepseek-flash', label: 'DeepSeek 4.1 Flash' },
 ];
 export const DEFAULT_TEXT_MODEL = TEXT_MODEL_OPTIONS[0].value;
